@@ -304,9 +304,9 @@ export function usePeerSession({
 
   // Host a room
   const createRoom = useCallback(
-    (customCode?: string) => {
+    (customCode?: string | unknown) => {
       disconnect();
-      const code = (customCode || generateRandomCode()).toUpperCase();
+      const code = (typeof customCode === 'string' && customCode.trim() ? customCode.trim() : generateRandomCode()).toUpperCase();
       setRoomCode(code);
       setIsHost(true);
       setPeerStatus('connecting');
@@ -341,9 +341,9 @@ export function usePeerSession({
 
   // Join a room as guest
   const joinRoom = useCallback(
-    (code: string) => {
+    (code?: string | unknown) => {
       disconnect();
-      const cleanCode = code.trim().toUpperCase();
+      const cleanCode = (typeof code === 'string' ? code : '').trim().toUpperCase();
       if (!cleanCode) return;
 
       setRoomCode(cleanCode);

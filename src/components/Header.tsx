@@ -186,7 +186,7 @@ export const Header: React.FC<HeaderProps> = ({
                     size="sm"
                     variant="primary"
                     className="w-full text-xs bg-rose-500 hover:bg-rose-600 text-white font-medium"
-                    onClick={onCreateRoom}
+                    onClick={() => onCreateRoom()}
                   >
                     Generate Room Code
                   </Button>

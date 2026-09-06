@@ -71,11 +71,13 @@ export interface PeerSyncMessage {
     | 'filter-change'
     | 'layout-change'
     | 'ping'
-    | 'request-call';
+    | 'request-call'
+    | 'live-frame';
   countdownSec?: number;
   filterId?: FilterId;
   layoutId?: StripLayout;
   photoUrl?: string;
   sourceName?: string;
   timestamp?: number;
+  frame?: string;
 }

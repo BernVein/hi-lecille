@@ -1,4 +1,4 @@
-import { Download, Trash2, Heart } from "lucide-react";
+import { Download, Trash2 } from "lucide-react";
 
 interface SavedMemory {
   id: string;

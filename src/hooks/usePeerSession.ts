@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { joinRoom as trysteroJoinRoom } from '@trystero-p2p/torrent';
+import { joinRoom as trysteroJoinRoom } from 'trystero';
 import type { PeerStatus, PeerSyncMessage, FilterId, StripLayout } from '../types/photobooth';
 
 interface UsePeerSessionProps {
@@ -30,19 +30,39 @@ export interface UsePeerSessionReturn {
 
 const APP_ID = 'hi-lecille-photobooth-v1';
 
+// High-speed, censorship-resistant Nostr relays (tested and open)
+const NOSTR_RELAYS = [
+  'wss://nos.lol',
+  'wss://purplerelay.com',
+  'wss://relay.mostr.pub',
+  'wss://chorus.pjv.me',
+  'wss://bucket.coracle.social',
+  'wss://relay.snort.social',
+];
+
+// Open Relay Project (Metered.ca) global STUN & TURN servers for 100% NAT traversal
+const ICE_SERVERS: RTCIceServer[] = [
+  // Google Public STUN
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+  // Cloudflare Public STUN
+  { urls: ['stun:stun.cloudflare.com:3478'] },
+  // Open Relay Project STUN
+  { urls: ['stun:openrelay.metered.ca:80'] },
+  // Open Relay Project TURN (UDP + TCP + TLS over 80/443 for traversing CGNAT and restrictive cellular firewalls)
+  {
+    urls: [
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:443',
+      'turn:openrelay.metered.ca:443?transport=tcp',
+    ],
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+];
+
 const RTC_CONFIG: RTCConfiguration = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    { urls: 'stun:global.stun.twilio.com:3478' },
-    { urls: 'stun:stun.cloudflare.com:3478' },
-    { urls: 'stun:stun.services.mozilla.com' },
-    { urls: 'stun:stun.syncthing.net:3478' },
-  ],
-  iceCandidatePoolSize: 10,
+  iceServers: ICE_SERVERS,
+  iceCandidatePoolSize: 2,
 };
 
 function generateRandomCode(): string {
@@ -175,10 +195,18 @@ export function usePeerSession({
             appId: APP_ID,
             rtcConfig: RTC_CONFIG,
             relayConfig: {
+              urls: NOSTR_RELAYS,
+              redundancy: 5,
               warnOnRelayFailure: false,
             },
+            trickleIce: true,
           },
-          cleanCode
+          cleanCode,
+          {
+            onJoinError: (details: any) => {
+              console.warn('[Room] onJoinError:', details);
+            },
+          }
         );
 
         roomRef.current = room;
@@ -247,6 +275,7 @@ export function usePeerSession({
           // Immediately send our local stream to the new peer
           if (localStreamRef.current) {
             try {
+              room.addStream(localStreamRef.current);
               room.addStream(localStreamRef.current, { target: peerId });
             } catch (err) {
               console.warn('[Room] Failed sending stream to peer:', err);
@@ -262,6 +291,16 @@ export function usePeerSession({
             tracks: stream.getTracks().length,
           });
 
+          partnerPeerIdRef.current = peerId;
+          setRemoteStream(stream);
+          setPeerStatus('connected');
+          setStatusMessage('Connected with babe 💕');
+          bindStreamToVideo(stream);
+        };
+
+        // Peer Track received (fallback for browsers emitting track events directly)
+        room.onPeerTrack = (track: MediaStreamTrack, stream: MediaStream, peerId: string) => {
+          console.log('[Room] 🎥 Received remote track from babe:', track.kind, peerId);
           partnerPeerIdRef.current = peerId;
           setRemoteStream(stream);
           setPeerStatus('connected');

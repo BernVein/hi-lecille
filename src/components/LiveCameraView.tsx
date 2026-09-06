@@ -44,11 +44,14 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
 
   // Direct sync of remoteStream to remoteVideo element
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      if (remoteVideoRef.current.srcObject !== remoteStream) {
-        remoteVideoRef.current.srcObject = remoteStream;
+    const video = remoteVideoRef.current;
+    if (video && remoteStream) {
+      if (video.srcObject !== remoteStream) {
+        video.srcObject = remoteStream;
       }
-      remoteVideoRef.current.play().catch(() => {});
+      if (video.paused) {
+        video.play().catch(() => {});
+      }
     }
   }, [remoteStream, remoteVideoRef]);
 

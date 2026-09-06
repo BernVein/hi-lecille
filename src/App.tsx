@@ -97,6 +97,7 @@ export function App() {
     roomCode,
     peerStatus,
     remoteStream,
+    remoteFrame,
     remoteVideoRef,
     shareUrl,
     createRoom,
@@ -364,6 +365,7 @@ export function App() {
               localVideoRef={localVideoRef}
               remoteVideoRef={remoteVideoRef}
               remoteStream={remoteStream}
+              remoteFrame={remoteFrame}
               hasRemoteStream={Boolean(remoteStream && remoteStream.getVideoTracks().length > 0)}
               peerStatus={peerStatus}
               activeFilter={activeFilter}

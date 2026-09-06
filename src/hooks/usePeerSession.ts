@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { joinRoom as trysteroJoinRoom } from 'trystero';
+import { joinRoom as trysteroJoinRoom } from '@trystero-p2p/torrent';
 import type { PeerStatus, PeerSyncMessage, FilterId, StripLayout } from '../types/photobooth';
 
 interface UsePeerSessionProps {
@@ -174,6 +174,9 @@ export function usePeerSession({
           {
             appId: APP_ID,
             rtcConfig: RTC_CONFIG,
+            relayConfig: {
+              warnOnRelayFailure: false,
+            },
           },
           cleanCode
         );

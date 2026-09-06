@@ -12,6 +12,8 @@
   "dependencies": {
     "@heroui/react": "^3.2.4",
     "@heroui/styles": "^3.2.4",
+    "@trystero-p2p/mqtt": "^0.25.4",
+    "@trystero-p2p/torrent": "^0.25.4",
     "@types/canvas-confetti": "^1.9.0",
     "canvas-confetti": "^1.9.4",
     "lucide-react": "^1.41.0",

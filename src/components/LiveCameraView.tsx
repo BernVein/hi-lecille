@@ -128,9 +128,15 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
             <video
               ref={(el) => {
                 if (el) {
-                  (remoteVideoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
+                  const mutableRef = remoteVideoRef as React.MutableRefObject<HTMLVideoElement | null>;
+                  // Only rebind if the element actually changed
+                  if (mutableRef.current !== el) {
+                    mutableRef.current = el;
+                  }
+                  // Always ensure stream is bound
                   if (remoteStream && el.srcObject !== remoteStream) {
                     el.srcObject = remoteStream;
+                    el.muted = true; // Required for autoplay policy
                     el.play().catch(() => {});
                   }
                 }
@@ -141,7 +147,16 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
               style={{ filter: currentFilter.cssFilter }}
               className="w-full h-full object-cover transition-all duration-300"
               onLoadedMetadata={(e) => {
-                (e.target as HTMLVideoElement).play().catch(() => {});
+                const vid = e.target as HTMLVideoElement;
+                console.log('[LiveCameraView] Remote video metadata loaded:', {
+                  width: vid.videoWidth,
+                  height: vid.videoHeight,
+                });
+                vid.play().catch(() => {});
+              }}
+              onCanPlay={(e) => {
+                const vid = e.target as HTMLVideoElement;
+                vid.play().catch(() => {});
               }}
             />
 

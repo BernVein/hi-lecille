@@ -29,14 +29,12 @@ interface UsePeerSessionReturn {
 }
 
 const PEER_CONFIG = {
-  debug: 1,
+  debug: 2, // Increase debug level for better diagnostics
   config: {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
       { urls: 'stun:global.stun.twilio.com:3478' },
       {
         urls: 'turn:openrelay.metered.ca:80',
@@ -86,132 +84,344 @@ export function usePeerSession({
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(localStream);
   const partnerPeerIdRef = useRef<string | null>(null);
+  const retryTimeoutRef = useRef<number | null>(null);
+  const hasReceivedStreamRef = useRef(false);
 
-  // Attach stream to remote video element helper
-  const attachRemoteStream = useCallback((stream: MediaStream) => {
-    console.log('Attaching remote stream:', stream.id, 'video tracks:', stream.getVideoTracks().length);
-    setRemoteStream(stream);
-    setPeerStatus('connected');
-    setStatusMessage('Connected with babe 💕');
+  // Keep localStreamRef always in sync
+  useEffect(() => {
+    localStreamRef.current = localStream;
+  }, [localStream]);
 
-    stream.getVideoTracks().forEach((track) => {
-      track.enabled = true;
-      track.onunmute = () => {
-        console.log('Remote video track unmuted and active');
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.play().catch(() => {});
-        }
-      };
-    });
-
-    stream.onaddtrack = () => {
-      console.log('Track added to remote stream, total tracks:', stream.getTracks().length);
-      setRemoteStream(new MediaStream(stream.getTracks()));
-    };
-
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = stream;
-      const playPromise = remoteVideoRef.current.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((err) => {
-          console.warn('Remote video play prevented:', err);
-        });
-      }
-    }
-  }, []);
-
-  // Call partner peer with media stream (only when stream has valid video tracks)
-  const callPartner = useCallback((targetPeerId: string) => {
-    if (!peerRef.current || peerRef.current.destroyed) return;
-    const streamToSend = localStreamRef.current;
-
-    // Don't call if we have no video tracks yet
-    if (!streamToSend || streamToSend.getVideoTracks().length === 0) {
-      console.log('Postponing call until local camera has video tracks');
+  // Bind stream to video element reliably
+  const bindStreamToVideo = useCallback((stream: MediaStream) => {
+    const video = remoteVideoRef.current;
+    if (!video) {
+      console.warn('[WebRTC] No remote video element ref available');
       return;
     }
 
-    try {
-      if (mediaConnRef.current) {
-        mediaConnRef.current.close();
+    console.log('[WebRTC] Binding stream to video element:', {
+      streamId: stream.id,
+      videoTracks: stream.getVideoTracks().length,
+      audioTracks: stream.getAudioTracks().length,
+    });
+
+    // Always re-set srcObject even if it looks the same
+    video.srcObject = stream;
+    video.muted = true; // Muted is required for autoplay to work
+    video.playsInline = true;
+
+    // Force play
+    const tryPlay = () => {
+      video.play().then(() => {
+        console.log('[WebRTC] ✅ Remote video playing successfully');
+      }).catch((err) => {
+        console.warn('[WebRTC] Video play() failed, retrying in 500ms:', err.message);
+        setTimeout(tryPlay, 500);
+      });
+    };
+    tryPlay();
+  }, []);
+
+  // Attach stream to state + video element
+  const attachRemoteStream = useCallback((stream: MediaStream) => {
+    const videoTracks = stream.getVideoTracks();
+    console.log('[WebRTC] attachRemoteStream called:', {
+      streamId: stream.id,
+      totalTracks: stream.getTracks().length,
+      videoTracks: videoTracks.length,
+      videoTrackStates: videoTracks.map(t => ({
+        id: t.id,
+        enabled: t.enabled,
+        muted: t.muted,
+        readyState: t.readyState,
+      })),
+    });
+
+    hasReceivedStreamRef.current = true;
+
+    // Enable all video tracks
+    videoTracks.forEach((track) => {
+      track.enabled = true;
+
+      // Listen for track becoming live (unmuting)
+      track.onunmute = () => {
+        console.log('[WebRTC] Video track unmuted:', track.id);
+        bindStreamToVideo(stream);
+      };
+
+      track.onended = () => {
+        console.log('[WebRTC] Video track ended:', track.id);
+      };
+    });
+
+    // Listen for new tracks being added to the stream
+    stream.onaddtrack = (event) => {
+      console.log('[WebRTC] Track added:', event.track.kind, event.track.id);
+      if (event.track.kind === 'video') {
+        event.track.enabled = true;
+        // Create new MediaStream to trigger React re-render
+        setRemoteStream(new MediaStream(stream.getTracks()));
+        bindStreamToVideo(stream);
+      }
+    };
+
+    stream.onremovetrack = (event) => {
+      console.log('[WebRTC] Track removed:', event.track.kind);
+    };
+
+    setRemoteStream(stream);
+    setPeerStatus('connected');
+    setStatusMessage('Connected with babe 💕');
+    bindStreamToVideo(stream);
+  }, [bindStreamToVideo]);
+
+  // Monitor ICE connection state for a media call
+  const monitorConnection = useCallback((call: MediaConnection) => {
+    // PeerJS wraps the RTCPeerConnection - try to access it
+    const pc = (call as any).peerConnection as RTCPeerConnection | undefined;
+    if (!pc) {
+      console.warn('[WebRTC] Cannot access RTCPeerConnection for ICE monitoring');
+      return;
+    }
+
+    const logIceState = () => {
+      console.log('[WebRTC] ICE state:', {
+        iceConnectionState: pc.iceConnectionState,
+        connectionState: pc.connectionState,
+        signalingState: pc.signalingState,
+      });
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      logIceState();
+
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        console.log('[WebRTC] ✅ ICE Connected! Media path is established.');
+        setPeerStatus('connected');
+        setStatusMessage('Connected with babe 💕');
       }
 
-      console.log('Initiating media call to:', targetPeerId);
-      const call = peerRef.current.call(targetPeerId, streamToSend);
-      mediaConnRef.current = call;
-      partnerPeerIdRef.current = targetPeerId;
+      if (pc.iceConnectionState === 'failed') {
+        console.error('[WebRTC] ❌ ICE Connection FAILED - media cannot flow');
+        setStatusMessage('Video connection failed. Tap retry.');
+        // Auto-retry after 3 seconds
+        if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = window.setTimeout(() => {
+          if (partnerPeerIdRef.current) {
+            console.log('[WebRTC] Auto-retrying media call after ICE failure...');
+            initiateMediaCall(partnerPeerIdRef.current);
+          }
+        }, 3000);
+      }
 
-      call.on('stream', (stream) => {
-        console.log('Received remote stream via outgoing call, tracks:', stream.getTracks().length);
-        attachRemoteStream(stream);
+      if (pc.iceConnectionState === 'disconnected') {
+        console.warn('[WebRTC] ⚠️ ICE Disconnected (may recover)');
+        setStatusMessage('Reconnecting video...');
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log('[WebRTC] Connection state:', pc.connectionState);
+    };
+
+    // Log ICE candidates for debugging
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        console.log('[WebRTC] ICE candidate:', event.candidate.type, event.candidate.protocol);
+      }
+    };
+  }, []);
+
+  // Initiate an outgoing media call to partner
+  const initiateMediaCall = useCallback((targetPeerId: string) => {
+    if (!peerRef.current || peerRef.current.destroyed) {
+      console.warn('[WebRTC] Cannot call - peer is null or destroyed');
+      return;
+    }
+
+    const streamToSend = localStreamRef.current;
+
+    // Create a stream to send - if we have local video, use it; otherwise send an empty stream
+    // so the remote peer's call.on('stream') still fires
+    let outgoingStream: MediaStream;
+    if (streamToSend && streamToSend.getVideoTracks().length > 0) {
+      outgoingStream = streamToSend;
+      console.log('[WebRTC] Calling with local video stream:', outgoingStream.getVideoTracks().length, 'tracks');
+    } else {
+      // Create a canvas-based "placeholder" stream so the call goes through
+      console.log('[WebRTC] No local video yet, calling with placeholder canvas stream');
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 480;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, 640, 480);
+      }
+      outgoingStream = canvas.captureStream(1); // 1 FPS placeholder
+    }
+
+    try {
+      // Close existing media connection if any
+      if (mediaConnRef.current) {
+        try { mediaConnRef.current.close(); } catch {}
+        mediaConnRef.current = null;
+      }
+
+      console.log('[WebRTC] Initiating outgoing call to:', targetPeerId);
+      const call = peerRef.current.call(targetPeerId, outgoingStream);
+
+      if (!call) {
+        console.error('[WebRTC] peer.call() returned null/undefined');
+        return;
+      }
+
+      mediaConnRef.current = call;
+
+      call.on('stream', (incomingStream) => {
+        console.log('[WebRTC] 🎥 Received remote stream via OUTGOING call:', {
+          streamId: incomingStream.id,
+          tracks: incomingStream.getTracks().length,
+          videoTracks: incomingStream.getVideoTracks().length,
+        });
+        attachRemoteStream(incomingStream);
       });
 
       call.on('close', () => {
-        setRemoteStream(null);
+        console.log('[WebRTC] Outgoing call closed');
       });
 
       call.on('error', (err) => {
-        console.warn('Outgoing call error:', err);
+        console.error('[WebRTC] Outgoing call error:', err);
       });
+
+      // Monitor ICE states after a small delay to let PeerConnection initialize
+      setTimeout(() => monitorConnection(call), 500);
+
     } catch (err) {
-      console.error('Call partner failed:', err);
+      console.error('[WebRTC] initiateMediaCall crashed:', err);
     }
-  }, [attachRemoteStream]);
+  }, [attachRemoteStream, monitorConnection]);
 
   // Handle incoming media call
   const handleIncomingCall = useCallback((call: MediaConnection) => {
-    mediaConnRef.current = call;
+    console.log('[WebRTC] 📞 Incoming call from:', call.peer);
     partnerPeerIdRef.current = call.peer;
 
+    // Answer with our local stream or empty stream
     const streamToSend = localStreamRef.current;
+    let answerStream: MediaStream;
+
     if (streamToSend && streamToSend.getVideoTracks().length > 0) {
-      console.log('Answering incoming call with local camera stream');
-      call.answer(streamToSend);
+      answerStream = streamToSend;
+      console.log('[WebRTC] Answering with local video stream');
     } else {
-      console.log('Answering incoming call without local tracks yet');
-      call.answer();
+      console.log('[WebRTC] Answering with placeholder canvas stream');
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 480;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, 640, 480);
+      }
+      answerStream = canvas.captureStream(1);
     }
 
-    call.on('stream', (stream) => {
-      console.log('Received remote stream via incoming call, tracks:', stream.getTracks().length);
-      attachRemoteStream(stream);
+    // Close any existing media connection
+    if (mediaConnRef.current) {
+      try { mediaConnRef.current.close(); } catch {}
+    }
+    mediaConnRef.current = call;
+
+    call.answer(answerStream);
+
+    call.on('stream', (incomingStream) => {
+      console.log('[WebRTC] 🎥 Received remote stream via INCOMING call:', {
+        streamId: incomingStream.id,
+        tracks: incomingStream.getTracks().length,
+        videoTracks: incomingStream.getVideoTracks().length,
+      });
+      attachRemoteStream(incomingStream);
     });
 
     call.on('close', () => {
-      setRemoteStream(null);
+      console.log('[WebRTC] Incoming call closed');
     });
 
     call.on('error', (err) => {
-      console.warn('Media call error:', err);
+      console.error('[WebRTC] Incoming call error:', err);
     });
-  }, [attachRemoteStream]);
 
-  // Keep localStreamRef in sync with localStream prop & trigger call when ready
-  useEffect(() => {
-    localStreamRef.current = localStream;
+    // Monitor ICE states
+    setTimeout(() => monitorConnection(call), 500);
 
-    if (localStream && localStream.getVideoTracks().length > 0) {
-      // If we know the partner's peer ID, initiate or refresh media call
-      if (partnerPeerIdRef.current) {
-        console.log('Local stream ready, initiating call to partner:', partnerPeerIdRef.current);
-        callPartner(partnerPeerIdRef.current);
+  }, [attachRemoteStream, monitorConnection]);
+
+  // Replace local stream tracks in an existing RTCPeerConnection (renegotiation-free update)
+  const replaceTracksInCall = useCallback((newStream: MediaStream) => {
+    if (!mediaConnRef.current) return;
+    const pc = (mediaConnRef.current as any).peerConnection as RTCPeerConnection | undefined;
+    if (!pc) return;
+
+    const senders = pc.getSenders();
+    const newVideoTrack = newStream.getVideoTracks()[0];
+
+    if (newVideoTrack) {
+      const videoSender = senders.find(s => s.track?.kind === 'video');
+      if (videoSender) {
+        console.log('[WebRTC] Replacing video track in existing call');
+        videoSender.replaceTrack(newVideoTrack).catch(err => {
+          console.warn('[WebRTC] Failed to replace track:', err);
+          // Fallback: re-call the partner
+          if (partnerPeerIdRef.current) {
+            initiateMediaCall(partnerPeerIdRef.current);
+          }
+        });
+      } else {
+        // No existing video sender, need to re-call
+        console.log('[WebRTC] No existing video sender, re-initiating call');
+        if (partnerPeerIdRef.current) {
+          initiateMediaCall(partnerPeerIdRef.current);
+        }
       }
     }
-  }, [localStream, callPartner]);
+  }, [initiateMediaCall]);
+
+  // When localStream becomes available/changes, update existing call or start new one
+  useEffect(() => {
+    if (!localStream || localStream.getVideoTracks().length === 0) return;
+
+    if (mediaConnRef.current && hasReceivedStreamRef.current) {
+      // Already in a call — try to replace the track seamlessly
+      replaceTracksInCall(localStream);
+    } else if (partnerPeerIdRef.current && !hasReceivedStreamRef.current) {
+      // We know our partner but haven't gotten their stream yet — call them
+      console.log('[WebRTC] Local stream ready, calling partner:', partnerPeerIdRef.current);
+      initiateMediaCall(partnerPeerIdRef.current);
+    }
+  }, [localStream, replaceTracksInCall, initiateMediaCall]);
 
   // Setup data connection listeners
+  // IMPORTANT: No remoteStream in deps to prevent cascading re-creation
   const setupDataConnection = useCallback(
     (conn: DataConnection) => {
       dataConnRef.current = conn;
       partnerPeerIdRef.current = conn.peer;
 
       conn.on('open', () => {
+        console.log('[WebRTC] ✅ Data connection OPEN with:', conn.peer);
         setPeerStatus('connected');
-        setStatusMessage('Connected with your partner 💕');
+        setStatusMessage('Connected with babe 💕');
 
-        // Once data connection opens, initiate media call if not already active or no stream
-        if ((!mediaConnRef.current || !remoteStream) && partnerPeerIdRef.current) {
-          callPartner(partnerPeerIdRef.current);
+        // Once data connection opens, initiate media call
+        if (partnerPeerIdRef.current && !hasReceivedStreamRef.current) {
+          setTimeout(() => {
+            if (partnerPeerIdRef.current) {
+              initiateMediaCall(partnerPeerIdRef.current);
+            }
+          }, 500); // Small delay to let signaling settle
         }
       });
 
@@ -242,33 +452,40 @@ export function usePeerSession({
             }
             break;
           case 'ping':
-            // If partner sent ping and we don't have active call, call them back with our stream
-            if (!mediaConnRef.current && partnerPeerIdRef.current) {
-              callPartner(partnerPeerIdRef.current);
+            // If partner pinged and we don't have their stream, try calling
+            if (!hasReceivedStreamRef.current && partnerPeerIdRef.current) {
+              initiateMediaCall(partnerPeerIdRef.current);
+            }
+            break;
+          case 'request-call':
+            // Partner is requesting we call them (they may have a new stream)
+            if (partnerPeerIdRef.current) {
+              initiateMediaCall(partnerPeerIdRef.current);
             }
             break;
         }
       });
 
       conn.on('close', () => {
+        console.log('[WebRTC] Data connection closed');
         setPeerStatus('disconnected');
         setStatusMessage('Babe disconnected');
         dataConnRef.current = null;
         setRemoteStream(null);
+        hasReceivedStreamRef.current = false;
       });
 
       conn.on('error', (err) => {
-        console.warn('Data connection error:', err);
+        console.warn('[WebRTC] Data connection error:', err);
       });
     },
     [
-      callPartner,
+      initiateMediaCall,
       onRemoteCountdownStart,
       onRemoteSnapTrigger,
       onRemotePhotoReceived,
       onRemoteFilterChange,
       onRemoteLayoutChange,
-      remoteStream,
     ]
   );
 
@@ -281,19 +498,24 @@ export function usePeerSession({
 
   // Cleanup peer connections
   const disconnect = useCallback(() => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
     if (dataConnRef.current) {
-      dataConnRef.current.close();
+      try { dataConnRef.current.close(); } catch {}
       dataConnRef.current = null;
     }
     if (mediaConnRef.current) {
-      mediaConnRef.current.close();
+      try { mediaConnRef.current.close(); } catch {}
       mediaConnRef.current = null;
     }
     if (peerRef.current) {
-      peerRef.current.destroy();
+      try { peerRef.current.destroy(); } catch {}
       peerRef.current = null;
     }
     partnerPeerIdRef.current = null;
+    hasReceivedStreamRef.current = false;
     setRemoteStream(null);
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = null;
@@ -316,24 +538,39 @@ export function usePeerSession({
       const peer = new Peer(hostPeerId, PEER_CONFIG);
       peerRef.current = peer;
 
-      peer.on('open', () => {
+      peer.on('open', (id) => {
+        console.log('[WebRTC] Host peer opened with ID:', id);
         setStatusMessage(`Room ${code} active! Share code with babe.`);
       });
 
       // Guest connects data channel
       peer.on('connection', (conn) => {
+        console.log('[WebRTC] Host received data connection from:', conn.peer);
         setupDataConnection(conn);
       });
 
       // Guest calls with media stream
       peer.on('call', (call) => {
+        console.log('[WebRTC] Host received media call from:', call.peer);
         handleIncomingCall(call);
       });
 
       peer.on('error', (err) => {
-        console.error('Host Peer error:', err);
-        setPeerStatus('error');
-        setStatusMessage(`Connection issue: ${err.type || 'Error'}`);
+        console.error('[WebRTC] Host Peer error:', err);
+        if (err.type === 'unavailable-id') {
+          setStatusMessage(`Room ${code} already exists. Try another.`);
+        } else {
+          setPeerStatus('error');
+          setStatusMessage(`Connection issue: ${err.type || 'Error'}`);
+        }
+      });
+
+      peer.on('disconnected', () => {
+        console.warn('[WebRTC] Host peer disconnected from signaling server');
+        // Try to reconnect to signaling server
+        if (peerRef.current && !peerRef.current.destroyed) {
+          peerRef.current.reconnect();
+        }
       });
     },
     [disconnect, handleIncomingCall, setupDataConnection]
@@ -355,30 +592,46 @@ export function usePeerSession({
       const peer = new Peer(guestPeerId, PEER_CONFIG);
       peerRef.current = peer;
 
-      peer.on('open', () => {
+      peer.on('open', (id) => {
+        console.log('[WebRTC] Guest peer opened with ID:', id);
         const targetHostId = `booth-${cleanCode}-host`;
         partnerPeerIdRef.current = targetHostId;
 
-        // Connect data
+        // Connect data channel first
         const conn = peer.connect(targetHostId, { reliable: true });
         setupDataConnection(conn);
 
-        // Also call host immediately
-        callPartner(targetHostId);
+        // Then call host with media after short delay
+        setTimeout(() => {
+          initiateMediaCall(targetHostId);
+        }, 1000);
       });
 
-      // Listen for incoming call from host as well (bi-directional support)
+      // Listen for incoming call from host (bi-directional)
       peer.on('call', (call) => {
+        console.log('[WebRTC] Guest received media call from:', call.peer);
         handleIncomingCall(call);
       });
 
       peer.on('error', (err) => {
-        console.error('Guest Peer error:', err);
-        setPeerStatus('error');
-        setStatusMessage(`Cannot reach room ${cleanCode}. Check code!`);
+        console.error('[WebRTC] Guest Peer error:', err);
+        if (err.type === 'peer-unavailable') {
+          setPeerStatus('error');
+          setStatusMessage(`Room ${cleanCode} not found. Check the code!`);
+        } else {
+          setPeerStatus('error');
+          setStatusMessage(`Cannot reach room ${cleanCode}. Check code!`);
+        }
+      });
+
+      peer.on('disconnected', () => {
+        console.warn('[WebRTC] Guest peer disconnected from signaling server');
+        if (peerRef.current && !peerRef.current.destroyed) {
+          peerRef.current.reconnect();
+        }
       });
     },
-    [callPartner, disconnect, handleIncomingCall, setupDataConnection]
+    [disconnect, handleIncomingCall, initiateMediaCall, setupDataConnection]
   );
 
   // Capture still image from remote video feed
@@ -397,18 +650,12 @@ export function usePeerSession({
     return canvas.toDataURL('image/jpeg', 0.92);
   }, []);
 
-  // Sync remote video element when stream arrives
+  // Sync remote video element when stream arrives (backup for React re-renders)
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
-      const playPromise = remoteVideoRef.current.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((err) => {
-          console.warn('Remote video play prevented:', err);
-        });
-      }
+      bindStreamToVideo(remoteStream);
     }
-  }, [remoteStream]);
+  }, [remoteStream, bindStreamToVideo]);
 
   // Clean up on unmount
   useEffect(() => {
@@ -422,9 +669,11 @@ export function usePeerSession({
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
     if (roomParam) {
-      joinRoom(roomParam);
+      // Small delay to ensure camera is ready before joining
+      setTimeout(() => joinRoom(roomParam), 500);
     }
-  }, [joinRoom]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const shareUrl = typeof window !== 'undefined' && roomCode
     ? `${window.location.origin}${window.location.pathname}?room=${roomCode}`
@@ -432,10 +681,13 @@ export function usePeerSession({
 
   const retryMediaConnection = useCallback(() => {
     if (partnerPeerIdRef.current) {
-      console.log('Manually retrying media connection to:', partnerPeerIdRef.current);
-      callPartner(partnerPeerIdRef.current);
+      console.log('[WebRTC] Manual retry requested for:', partnerPeerIdRef.current);
+      hasReceivedStreamRef.current = false;
+      initiateMediaCall(partnerPeerIdRef.current);
+    } else {
+      console.warn('[WebRTC] No partner peer ID known for retry');
     }
-  }, [callPartner]);
+  }, [initiateMediaCall]);
 
   return {
     roomCode,

@@ -70,7 +70,8 @@ export interface PeerSyncMessage {
     | 'photo-data'
     | 'filter-change'
     | 'layout-change'
-    | 'ping';
+    | 'ping'
+    | 'request-call';
   countdownSec?: number;
   filterId?: FilterId;
   layoutId?: StripLayout;

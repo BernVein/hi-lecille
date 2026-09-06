@@ -29,14 +29,23 @@ export function useCamera(): UseCameraReturn {
         stream.getTracks().forEach((t) => t.stop());
       }
 
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: facingMode,
-          width: { ideal: 1280 },
-          height: { ideal: 960 },
-        },
-        audio: false, // video booth only, avoid echo
-      });
+      let mediaStream: MediaStream;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+          },
+          audio: false,
+        });
+      } catch (firstErr) {
+        console.warn('High-res camera request failed, falling back to default camera:', firstErr);
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
 
       setStream(mediaStream);
       if (videoRef.current) {

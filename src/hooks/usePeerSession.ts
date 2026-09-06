@@ -25,6 +25,7 @@ interface UsePeerSessionReturn {
   disconnect: () => void;
   broadcastMessage: (msg: PeerSyncMessage) => void;
   captureRemoteFrame: () => string | null;
+  retryMediaConnection: () => void;
 }
 
 const PEER_CONFIG = {
@@ -37,6 +38,21 @@ const PEER_CONFIG = {
       { urls: 'stun:stun3.l.google.com:19302' },
       { urls: 'stun:stun4.l.google.com:19302' },
       { urls: 'stun:global.stun.twilio.com:3478' },
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelay',
+        credential: 'openrelay',
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelay',
+        credential: 'openrelay',
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelay',
+        credential: 'openrelay',
+      },
     ],
   },
 };
@@ -71,90 +87,47 @@ export function usePeerSession({
   const localStreamRef = useRef<MediaStream | null>(localStream);
   const partnerPeerIdRef = useRef<string | null>(null);
 
-  // Keep localStreamRef in sync with localStream prop
-  useEffect(() => {
-    localStreamRef.current = localStream;
+  // Attach stream to remote video element helper
+  const attachRemoteStream = useCallback((stream: MediaStream) => {
+    setRemoteStream(stream);
+    setPeerStatus('connected');
+    setStatusMessage('Connected with your partner 💕');
 
-    // If localStream just arrived and we already have an active media call, update tracks!
-    if (localStream && mediaConnRef.current && mediaConnRef.current.peerConnection) {
-      try {
-        const pc = mediaConnRef.current.peerConnection;
-        const senders = pc.getSenders();
-        const videoTrack = localStream.getVideoTracks()[0];
-        if (videoTrack) {
-          const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
-          if (videoSender) {
-            videoSender.replaceTrack(videoTrack).catch((err) => {
-              console.warn('Failed to replace video track:', err);
-            });
-          } else {
-            // Track wasn't added yet, add it
-            pc.addTrack(videoTrack, localStream);
-          }
-        }
-      } catch (err) {
-        console.warn('Error upgrading active media connection with new local stream:', err);
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = stream;
+      const playPromise = remoteVideoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn('Remote video play prevented:', err);
+        });
       }
     }
-
-    // If data connection is open and we have partnerPeerId but no remote stream yet, try calling
-    if (localStream && dataConnRef.current && dataConnRef.current.open && partnerPeerIdRef.current) {
-      broadcastMessage({ type: 'ping' });
-    }
-  }, [localStream]);
-
-  // Handle incoming media call
-  const handleIncomingCall = useCallback((call: MediaConnection) => {
-    mediaConnRef.current = call;
-    partnerPeerIdRef.current = call.peer;
-
-    const streamToSend = localStreamRef.current;
-    if (streamToSend) {
-      call.answer(streamToSend);
-    } else {
-      call.answer();
-    }
-
-    call.on('stream', (stream) => {
-      setRemoteStream(stream);
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = stream;
-        remoteVideoRef.current.play().catch(() => {});
-      }
-    });
-
-    call.on('close', () => {
-      setRemoteStream(null);
-    });
-
-    call.on('error', (err) => {
-      console.warn('Media call error:', err);
-    });
   }, []);
 
-  // Call partner peer with media stream
+  // Call partner peer with media stream (only when stream has valid video tracks)
   const callPartner = useCallback((targetPeerId: string) => {
     if (!peerRef.current || peerRef.current.destroyed) return;
     const streamToSend = localStreamRef.current;
 
+    // Don't call if we have no video tracks yet
+    if (!streamToSend || streamToSend.getVideoTracks().length === 0) {
+      console.log('Postponing call until local camera has video tracks');
+      return;
+    }
+
     try {
-      let call: MediaConnection;
-      if (streamToSend) {
-        call = peerRef.current.call(targetPeerId, streamToSend);
-      } else {
-        // Call even if no local video yet so connection can establish
-        call = peerRef.current.call(targetPeerId, new MediaStream());
+      if (mediaConnRef.current) {
+        mediaConnRef.current.close();
       }
 
+      console.log('Initiating media call to:', targetPeerId);
+      const call = peerRef.current.call(targetPeerId, streamToSend);
       mediaConnRef.current = call;
       partnerPeerIdRef.current = targetPeerId;
 
       call.on('stream', (stream) => {
-        setRemoteStream(stream);
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = stream;
-          remoteVideoRef.current.play().catch(() => {});
-        }
+        console.log('Received remote stream via outgoing call, tracks:', stream.getTracks().length);
+        attachRemoteStream(stream);
       });
 
       call.on('close', () => {
@@ -167,7 +140,48 @@ export function usePeerSession({
     } catch (err) {
       console.error('Call partner failed:', err);
     }
-  }, []);
+  }, [attachRemoteStream]);
+
+  // Handle incoming media call
+  const handleIncomingCall = useCallback((call: MediaConnection) => {
+    mediaConnRef.current = call;
+    partnerPeerIdRef.current = call.peer;
+
+    const streamToSend = localStreamRef.current;
+    if (streamToSend && streamToSend.getVideoTracks().length > 0) {
+      console.log('Answering incoming call with local camera stream');
+      call.answer(streamToSend);
+    } else {
+      console.log('Answering incoming call without local tracks yet');
+      call.answer();
+    }
+
+    call.on('stream', (stream) => {
+      console.log('Received remote stream via incoming call, tracks:', stream.getTracks().length);
+      attachRemoteStream(stream);
+    });
+
+    call.on('close', () => {
+      setRemoteStream(null);
+    });
+
+    call.on('error', (err) => {
+      console.warn('Media call error:', err);
+    });
+  }, [attachRemoteStream]);
+
+  // Keep localStreamRef in sync with localStream prop & trigger call when ready
+  useEffect(() => {
+    localStreamRef.current = localStream;
+
+    if (localStream && localStream.getVideoTracks().length > 0) {
+      // If we know the partner's peer ID, initiate or refresh media call
+      if (partnerPeerIdRef.current) {
+        console.log('Local stream ready, initiating call to partner:', partnerPeerIdRef.current);
+        callPartner(partnerPeerIdRef.current);
+      }
+    }
+  }, [localStream, callPartner]);
 
   // Setup data connection listeners
   const setupDataConnection = useCallback(
@@ -179,8 +193,8 @@ export function usePeerSession({
         setPeerStatus('connected');
         setStatusMessage('Connected with your partner 💕');
 
-        // Once data connection opens, initiate media call if not already active
-        if (!mediaConnRef.current && partnerPeerIdRef.current) {
+        // Once data connection opens, initiate media call if not already active or no stream
+        if ((!mediaConnRef.current || !remoteStream) && partnerPeerIdRef.current) {
           callPartner(partnerPeerIdRef.current);
         }
       });
@@ -399,6 +413,13 @@ export function usePeerSession({
     ? `${window.location.origin}${window.location.pathname}?room=${roomCode}`
     : '';
 
+  const retryMediaConnection = useCallback(() => {
+    if (partnerPeerIdRef.current) {
+      console.log('Manually retrying media connection to:', partnerPeerIdRef.current);
+      callPartner(partnerPeerIdRef.current);
+    }
+  }, [callPartner]);
+
   return {
     roomCode,
     isHost,
@@ -412,5 +433,6 @@ export function usePeerSession({
     disconnect,
     broadcastMessage,
     captureRemoteFrame,
+    retryMediaConnection,
   };
 }

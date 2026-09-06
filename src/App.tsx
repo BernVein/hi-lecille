@@ -104,6 +104,7 @@ export function App() {
     disconnect,
     broadcastMessage,
     captureRemoteFrame,
+    retryMediaConnection,
   } = usePeerSession({
     localStream,
     onRemoteCountdownStart: (seconds) => {
@@ -363,7 +364,7 @@ export function App() {
               localVideoRef={localVideoRef}
               remoteVideoRef={remoteVideoRef}
               remoteStream={remoteStream}
-              hasRemoteStream={!!remoteStream}
+              hasRemoteStream={Boolean(remoteStream && remoteStream.getVideoTracks().length > 0)}
               peerStatus={peerStatus}
               activeFilter={activeFilter}
               countdown={countdown}
@@ -372,6 +373,7 @@ export function App() {
               onToggleFacingMode={toggleFacingMode}
               onToggleMirror={toggleMirror}
               onRestartCamera={startCamera}
+              onRetryConnection={retryMediaConnection}
               onUploadPartnerPhoto={handleUploadPartnerPhoto}
             />
 

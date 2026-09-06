@@ -17,6 +17,7 @@ interface LiveCameraViewProps {
   onToggleFacingMode: () => void;
   onToggleMirror: () => void;
   onRestartCamera: () => void;
+  onRetryConnection?: () => void;
   onUploadPartnerPhoto?: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
@@ -33,6 +34,7 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
   onToggleFacingMode,
   onToggleMirror,
   onRestartCamera,
+  onRetryConnection,
   onUploadPartnerPhoto,
 }) => {
   const currentFilter = PHOTOBOOTH_FILTERS.find((f) => f.id === activeFilter) || PHOTOBOOTH_FILTERS[0];
@@ -154,6 +156,18 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
               <span>Partner</span>
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
             </div>
+
+            {/* Quick reconnect button */}
+            {onRetryConnection && (
+              <button
+                type="button"
+                onClick={onRetryConnection}
+                title="Reconnect Partner Video"
+                className="absolute top-2.5 right-2.5 z-10 p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-zinc-400 hover:text-white border border-white/10 transition-colors"
+              >
+                <RefreshCw className="w-3 h-3" />
+              </button>
+            )}
           </div>
         ) : peerStatus === 'connected' ? (
           <div className="relative aspect-[4/3] bg-zinc-900/60 rounded-xl border border-dashed border-rose-500/30 flex flex-col items-center justify-center p-6 text-center">
@@ -163,9 +177,19 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
             <h4 className="text-sm font-semibold text-zinc-200 mb-1">
               Partner Connected!
             </h4>
-            <p className="text-xs text-zinc-400 max-w-xs">
-              Initializing partner camera feed...
+            <p className="text-xs text-zinc-400 max-w-xs mb-3">
+              Waiting for partner camera video...
             </p>
+            {onRetryConnection && (
+              <button
+                type="button"
+                onClick={onRetryConnection}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                <span>Retry Video Signal</span>
+              </button>
+            )}
           </div>
         ) : (
           peerStatus === 'connecting' && (

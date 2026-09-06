@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import Peer from 'peerjs';
-import type { DataConnection, MediaConnection } from 'peerjs';
+import { joinRoom as trysteroJoinRoom } from 'trystero';
 import type { PeerStatus, PeerSyncMessage, FilterId, StripLayout } from '../types/photobooth';
 
 interface UsePeerSessionProps {
@@ -29,22 +28,21 @@ export interface UsePeerSessionReturn {
   retryMediaConnection: () => void;
 }
 
-const PEER_CONFIG = {
-  debug: 1,
-  config: {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
-      { urls: 'stun:global.stun.twilio.com:3478' },
-      { urls: 'stun:stun.cloudflare.com:3478' },
-      { urls: 'stun:stun.services.mozilla.com' },
-      { urls: 'stun:stun.syncthing.net:3478' },
-    ],
-    iceCandidatePoolSize: 10,
-  },
+const APP_ID = 'hi-lecille-photobooth-v1';
+
+const RTC_CONFIG: RTCConfiguration = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:stun.services.mozilla.com' },
+    { urls: 'stun:stun.syncthing.net:3478' },
+  ],
+  iceCandidatePoolSize: 10,
 };
 
 function generateRandomCode(): string {
@@ -67,22 +65,20 @@ export function usePeerSession({
   const [roomCode, setRoomCode] = useState<string>('');
   const [isHost, setIsHost] = useState(false);
   const [peerStatus, setPeerStatus] = useState<PeerStatus>('disconnected');
-  const [statusMessage, setStatusMessage] = useState('Waiting to start session');
+  const [statusMessage, setStatusMessage] = useState('Ready to connect');
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [remoteFrame, setRemoteFrame] = useState<string | null>(null);
 
-  const isHostRef = useRef(false);
-  const peerRef = useRef<Peer | null>(null);
-  const dataConnRef = useRef<DataConnection | null>(null);
-  const mediaConnRef = useRef<MediaConnection | null>(null);
+  const roomRef = useRef<any>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(localStream);
-  const partnerPeerIdRef = useRef<string | null>(null);
-  const hasReceivedStreamRef = useRef(false);
   const remoteFrameRef = useRef<string | null>(null);
+  const partnerPeerIdRef = useRef<string | null>(null);
   const offscreenVideoRef = useRef<HTMLVideoElement | null>(null);
+  const sendSyncActionRef = useRef<((data: PeerSyncMessage) => Promise<void>) | null>(null);
+  const sendFrameActionRef = useRef<((data: { frame: string; timestamp: number }) => Promise<void>) | null>(null);
 
-  // Keep localStreamRef always synced and attached to offscreen video for frame fallback
+  // Sync localStream to ref and offscreen video element for live frame capture
   useEffect(() => {
     localStreamRef.current = localStream;
     if (!offscreenVideoRef.current) {
@@ -96,18 +92,24 @@ export function usePeerSession({
       offscreenVideoRef.current.srcObject = localStream;
       offscreenVideoRef.current.play().catch(() => {});
     }
+
+    // If already in a room and local stream changes, share new stream
+    if (roomRef.current && localStream) {
+      try {
+        roomRef.current.addStream(localStream);
+      } catch (err) {
+        console.warn('[Room] Could not add stream to room:', err);
+      }
+    }
   }, [localStream]);
 
-  // Bind stream to video element cleanly without causing play() request interruptions
+  // Bind media stream to remote video element without play() interruptions
   const bindStreamToVideo = useCallback((stream: MediaStream) => {
     const video = remoteVideoRef.current;
     if (!video) return;
 
-    // CRITICAL: NEVER reassign video.srcObject if it is already set to this stream!
-    // Re-assigning aborts in-flight playback with:
-    // "The play() request was interrupted by a new load request"
     if (video.srcObject !== stream) {
-      console.log('[WebRTC] Setting video.srcObject to stream:', stream.id);
+      console.log('[Room] Binding remote stream to video element:', stream.id);
       video.srcObject = stream;
     }
     video.muted = true;
@@ -117,254 +119,174 @@ export function usePeerSession({
       video
         .play()
         .then(() => {
-          console.log('[WebRTC] ✅ Remote video playing successfully');
+          console.log('[Room] ✅ Remote video playing successfully');
         })
         .catch((err) => {
           if (err.name !== 'AbortError') {
-            console.warn('[WebRTC] Video play() error:', err.message);
+            console.warn('[Room] Remote video play error:', err.message);
           }
         });
     }
   }, []);
 
-  // Attach received stream to state + video element
-  const attachRemoteStream = useCallback(
-    (stream: MediaStream) => {
-      const videoTracks = stream.getVideoTracks();
-      console.log('[WebRTC] attachRemoteStream called:', {
-        streamId: stream.id,
-        videoTracks: videoTracks.length,
-      });
-
-      hasReceivedStreamRef.current = true;
-
-      videoTracks.forEach((track) => {
-        track.enabled = true;
-        track.onunmute = () => {
-          console.log('[WebRTC] Video track unmuted:', track.id);
-          bindStreamToVideo(stream);
-        };
-        track.onended = () => {
-          console.log('[WebRTC] Video track ended:', track.id);
-        };
-      });
-
-      stream.onaddtrack = (event) => {
-        if (event.track.kind === 'video') {
-          event.track.enabled = true;
-          setRemoteStream(new MediaStream(stream.getTracks()));
-          bindStreamToVideo(stream);
-        }
-      };
-
-      setRemoteStream(stream);
-      setPeerStatus('connected');
-      setStatusMessage('Connected with babe 💕');
-      bindStreamToVideo(stream);
-    },
-    [bindStreamToVideo]
-  );
-
-  // Monitor ICE state without endless auto-teardown loops
-  const monitorConnection = useCallback((call: MediaConnection) => {
-    const pc = (call as any).peerConnection as RTCPeerConnection | undefined;
-    if (!pc) return;
-
-    pc.oniceconnectionstatechange = () => {
-      console.log('[WebRTC] ICE state:', pc.iceConnectionState, pc.connectionState);
-
-      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-        console.log('[WebRTC] ✅ ICE Connected! Direct media path established.');
-        setPeerStatus('connected');
-        setStatusMessage('Connected with babe 💕');
-      }
-
-      if (pc.iceConnectionState === 'failed') {
-        console.warn('[WebRTC] Direct ICE failed; live frame fallback keeps camera active.');
-        setStatusMessage('Connected with babe 💕');
-      }
-    };
-  }, []);
-
-  // Create lightweight placeholder stream if camera is not ready yet
-  const createPlaceholderStream = useCallback(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 320;
-    canvas.height = 240;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = '#18181b';
-      ctx.fillRect(0, 0, 320, 240);
+  // Cleanup active room
+  const disconnect = useCallback(() => {
+    if (roomRef.current) {
+      try {
+        roomRef.current.leave();
+      } catch {}
+      roomRef.current = null;
     }
-    return canvas.captureStream(1);
+    sendSyncActionRef.current = null;
+    sendFrameActionRef.current = null;
+    partnerPeerIdRef.current = null;
+    remoteFrameRef.current = null;
+    setRemoteStream(null);
+    setRemoteFrame(null);
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+    setPeerStatus('disconnected');
+    setStatusMessage('Ready to connect');
   }, []);
 
-  // Initiate an outgoing media call (Guest -> Host)
-  const initiateMediaCall = useCallback(
-    (targetPeerId: string) => {
-      if (!peerRef.current || peerRef.current.destroyed) {
-        console.warn('[WebRTC] Cannot call - peer is null or destroyed');
-        return;
-      }
+  // Enter room (both Host and Guest use this same robust decentralized room)
+  const enterRoom = useCallback(
+    (code: string, hostMode: boolean) => {
+      disconnect();
 
-      const outgoingStream =
-        localStreamRef.current && localStreamRef.current.getVideoTracks().length > 0
-          ? localStreamRef.current
-          : createPlaceholderStream();
+      const cleanCode = code.trim().toUpperCase();
+      if (!cleanCode) return;
+
+      setRoomCode(cleanCode);
+      setIsHost(hostMode);
+      setPeerStatus('connecting');
+      setStatusMessage(
+        hostMode
+          ? `Room ${cleanCode} active! Waiting for babe...`
+          : `Connecting to room ${cleanCode}...`
+      );
+
+      console.log('[Room] Joining decentralized room:', cleanCode);
 
       try {
-        console.log('[WebRTC] Initiating outgoing call to:', targetPeerId);
-        const call = peerRef.current.call(targetPeerId, outgoingStream);
+        const room = trysteroJoinRoom(
+          {
+            appId: APP_ID,
+            rtcConfig: RTC_CONFIG,
+          },
+          cleanCode
+        );
 
-        if (!call) {
-          console.error('[WebRTC] peer.call() returned null');
-          return;
+        roomRef.current = room;
+
+        // Broadcast local camera stream if available
+        if (localStreamRef.current) {
+          try {
+            room.addStream(localStreamRef.current);
+          } catch (err) {
+            console.warn('[Room] Initial addStream error:', err);
+          }
         }
 
-        mediaConnRef.current = call;
+        // Actions: Real-time Camera Frame Fallback
+        const frameAction = room.makeAction<{ frame: string; timestamp: number }>('live-frame');
+        sendFrameActionRef.current = frameAction.send;
 
-        call.on('stream', (incomingStream) => {
-          console.log('[WebRTC] 🎥 Received remote stream via call: ', incomingStream.id);
-          attachRemoteStream(incomingStream);
-        });
+        frameAction.onMessage = (data: { frame: string; timestamp: number }) => {
+          if (data && data.frame) {
+            remoteFrameRef.current = data.frame;
+            setRemoteFrame(data.frame);
+            setPeerStatus('connected');
+            setStatusMessage('Connected with babe 💕');
+          }
+        };
 
-        call.on('close', () => {
-          console.log('[WebRTC] Outgoing call closed');
-        });
+        // Actions: Synchronized photobooth messages (countdown, snaps, photos, filters)
+        const syncAction = room.makeAction<any>('sync-msg');
+        sendSyncActionRef.current = syncAction.send;
 
-        call.on('error', (err) => {
-          console.error('[WebRTC] Outgoing call error:', err);
-        });
+        syncAction.onMessage = (msg: PeerSyncMessage) => {
+          if (!msg || !msg.type) return;
 
-        setTimeout(() => monitorConnection(call), 500);
+          switch (msg.type) {
+            case 'countdown-start':
+              onRemoteCountdownStart?.(msg.countdownSec ?? 3);
+              break;
+            case 'snap-trigger':
+              onRemoteSnapTrigger?.();
+              break;
+            case 'photo-data':
+              if (msg.photoUrl) {
+                onRemotePhotoReceived?.(msg.photoUrl);
+              }
+              break;
+            case 'filter-change':
+              if (msg.filterId) {
+                onRemoteFilterChange?.(msg.filterId);
+              }
+              break;
+            case 'layout-change':
+              if (msg.layoutId) {
+                onRemoteLayoutChange?.(msg.layoutId);
+              }
+              break;
+          }
+        };
+
+        // Peer Joined
+        room.onPeerJoin = (peerId: string) => {
+          console.log('[Room] 💕 Babe connected with peer ID:', peerId);
+          partnerPeerIdRef.current = peerId;
+          setPeerStatus('connected');
+          setStatusMessage('Connected with babe 💕');
+
+          // Immediately send our local stream to the new peer
+          if (localStreamRef.current) {
+            try {
+              room.addStream(localStreamRef.current, { target: peerId });
+            } catch (err) {
+              console.warn('[Room] Failed sending stream to peer:', err);
+            }
+          }
+        };
+
+        // Peer Video/Audio Stream received
+        room.onPeerStream = (stream: MediaStream, peerId: string) => {
+          console.log('[Room] 🎥 Received remote media stream from babe:', {
+            peerId,
+            streamId: stream.id,
+            tracks: stream.getTracks().length,
+          });
+
+          partnerPeerIdRef.current = peerId;
+          setRemoteStream(stream);
+          setPeerStatus('connected');
+          setStatusMessage('Connected with babe 💕');
+          bindStreamToVideo(stream);
+        };
+
+        // Peer Left
+        room.onPeerLeave = (peerId: string) => {
+          console.log('[Room] Babe left room:', peerId);
+          if (partnerPeerIdRef.current === peerId) {
+            partnerPeerIdRef.current = null;
+            setRemoteStream(null);
+            setRemoteFrame(null);
+            remoteFrameRef.current = null;
+            setPeerStatus('connecting');
+            setStatusMessage(`Babe disconnected. Waiting in room ${cleanCode}...`);
+          }
+        };
       } catch (err) {
-        console.error('[WebRTC] initiateMediaCall error:', err);
+        console.error('[Room] Failed to join room:', err);
+        setPeerStatus('error');
+        setStatusMessage('Connection failed. Please retry.');
       }
-    },
-    [attachRemoteStream, createPlaceholderStream, monitorConnection]
-  );
-
-  // Handle incoming media call (Host answers Guest)
-  const handleIncomingCall = useCallback(
-    (call: MediaConnection) => {
-      console.log('[WebRTC] 📞 Incoming call from:', call.peer);
-      partnerPeerIdRef.current = call.peer;
-
-      if (mediaConnRef.current && mediaConnRef.current !== call) {
-        try {
-          mediaConnRef.current.close();
-        } catch {}
-      }
-      mediaConnRef.current = call;
-
-      const answerStream =
-        localStreamRef.current && localStreamRef.current.getVideoTracks().length > 0
-          ? localStreamRef.current
-          : createPlaceholderStream();
-
-      call.answer(answerStream);
-
-      call.on('stream', (incomingStream) => {
-        console.log('[WebRTC] 🎥 Received remote stream via incoming answer:', incomingStream.id);
-        attachRemoteStream(incomingStream);
-      });
-
-      call.on('close', () => {
-        console.log('[WebRTC] Incoming call closed');
-      });
-
-      call.on('error', (err) => {
-        console.error('[WebRTC] Incoming call error:', err);
-      });
-
-      setTimeout(() => monitorConnection(call), 500);
-    },
-    [attachRemoteStream, createPlaceholderStream, monitorConnection]
-  );
-
-  // Setup data connection listeners
-  const setupDataConnection = useCallback(
-    (conn: DataConnection) => {
-      dataConnRef.current = conn;
-      partnerPeerIdRef.current = conn.peer;
-
-      conn.on('open', () => {
-        console.log('[WebRTC] ✅ Data connection OPEN with:', conn.peer);
-        setPeerStatus('connected');
-        setStatusMessage('Connected with babe 💕');
-
-        // SINGLE INITIATOR RULE:
-        // Guest calls Host; Host ONLY answers!
-        // This eliminates call collisions, race conditions, and endless re-negotiation loops!
-        if (!isHostRef.current) {
-          console.log('[WebRTC] Guest initiating call to Host');
-          setTimeout(() => {
-            if (partnerPeerIdRef.current) {
-              initiateMediaCall(partnerPeerIdRef.current);
-            }
-          }, 300);
-        }
-      });
-
-      conn.on('data', (data: unknown) => {
-        const msg = data as PeerSyncMessage;
-        if (!msg || !msg.type) return;
-
-        switch (msg.type) {
-          case 'live-frame':
-            if (msg.frame) {
-              remoteFrameRef.current = msg.frame;
-              setRemoteFrame(msg.frame);
-              setPeerStatus('connected');
-              setStatusMessage('Connected with babe 💕');
-            }
-            break;
-          case 'countdown-start':
-            onRemoteCountdownStart?.(msg.countdownSec ?? 3);
-            break;
-          case 'snap-trigger':
-            onRemoteSnapTrigger?.();
-            break;
-          case 'photo-data':
-            if (msg.photoUrl) {
-              onRemotePhotoReceived?.(msg.photoUrl);
-            }
-            break;
-          case 'filter-change':
-            if (msg.filterId) {
-              onRemoteFilterChange?.(msg.filterId);
-            }
-            break;
-          case 'layout-change':
-            if (msg.layoutId) {
-              onRemoteLayoutChange?.(msg.layoutId);
-            }
-            break;
-          case 'request-call':
-            if (!isHostRef.current && partnerPeerIdRef.current) {
-              initiateMediaCall(partnerPeerIdRef.current);
-            }
-            break;
-        }
-      });
-
-      conn.on('close', () => {
-        console.log('[WebRTC] Data connection closed');
-        setPeerStatus('disconnected');
-        setStatusMessage('Babe disconnected');
-        dataConnRef.current = null;
-        setRemoteStream(null);
-        setRemoteFrame(null);
-        remoteFrameRef.current = null;
-        hasReceivedStreamRef.current = false;
-      });
-
-      conn.on('error', (err) => {
-        console.warn('[WebRTC] Data connection error:', err);
-      });
     },
     [
-      initiateMediaCall,
+      disconnect,
+      bindStreamToVideo,
       onRemoteCountdownStart,
       onRemoteSnapTrigger,
       onRemotePhotoReceived,
@@ -373,8 +295,33 @@ export function usePeerSession({
     ]
   );
 
-  // Live frame streaming fallback over DataConnection
-  // Guarantees camera video is NEVER blank even across restrictive mobile CGNAT/firewalls!
+  // Host: Generate code and enter room
+  const createRoom = useCallback(
+    (customCode?: string | unknown) => {
+      const code = (
+        typeof customCode === 'string' && customCode.trim()
+          ? customCode.trim()
+          : generateRandomCode()
+      ).toUpperCase();
+
+      enterRoom(code, true);
+    },
+    [enterRoom]
+  );
+
+  // Guest: Enter existing room code
+  const joinRoom = useCallback(
+    (code?: string | unknown) => {
+      const cleanCode = (typeof code === 'string' ? code : '').trim().toUpperCase();
+      if (!cleanCode) return;
+
+      enterRoom(cleanCode, false);
+    },
+    [enterRoom]
+  );
+
+  // Live frame sync fallback loop
+  // Ensures partners can ALWAYS see each other live with zero blank screen!
   useEffect(() => {
     if (peerStatus !== 'connected') return;
 
@@ -385,8 +332,8 @@ export function usePeerSession({
     if (!ctx) return;
 
     const interval = setInterval(() => {
-      const conn = dataConnRef.current;
-      if (!conn || !conn.open) return;
+      const sendFrame = sendFrameActionRef.current;
+      if (!sendFrame) return;
 
       const video = offscreenVideoRef.current;
       if (!video || video.videoWidth === 0 || video.videoHeight === 0) return;
@@ -398,163 +345,24 @@ export function usePeerSession({
         ctx.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
         const frame = frameCanvas.toDataURL('image/jpeg', 0.45);
 
-        conn.send({
-          type: 'live-frame',
+        sendFrame({
           frame,
           timestamp: Date.now(),
-        });
+        }).catch(() => {});
       } catch {}
-    }, 125); // ~8 FPS smooth live camera sync
+    }, 125); // 8 FPS smooth live camera sync
 
     return () => clearInterval(interval);
   }, [peerStatus]);
 
   // Broadcast data message to partner
   const broadcastMessage = useCallback((msg: PeerSyncMessage) => {
-    if (dataConnRef.current && dataConnRef.current.open) {
-      dataConnRef.current.send(msg);
+    if (sendSyncActionRef.current) {
+      sendSyncActionRef.current(msg).catch((err) => {
+        console.warn('[Room] broadcastMessage error:', err);
+      });
     }
   }, []);
-
-  // Cleanup all connections
-  const disconnect = useCallback(() => {
-    if (dataConnRef.current) {
-      try {
-        dataConnRef.current.close();
-      } catch {}
-      dataConnRef.current = null;
-    }
-    if (mediaConnRef.current) {
-      try {
-        mediaConnRef.current.close();
-      } catch {}
-      mediaConnRef.current = null;
-    }
-    if (peerRef.current) {
-      try {
-        peerRef.current.destroy();
-      } catch {}
-      peerRef.current = null;
-    }
-    partnerPeerIdRef.current = null;
-    hasReceivedStreamRef.current = false;
-    remoteFrameRef.current = null;
-    setRemoteStream(null);
-    setRemoteFrame(null);
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = null;
-    }
-    setPeerStatus('disconnected');
-    setStatusMessage('Ready to connect');
-  }, []);
-
-  // Host a room
-  const createRoom = useCallback(
-    (customCode?: string | unknown) => {
-      disconnect();
-      const code = (
-        typeof customCode === 'string' && customCode.trim()
-          ? customCode.trim()
-          : generateRandomCode()
-      ).toUpperCase();
-
-      setRoomCode(code);
-      setIsHost(true);
-      isHostRef.current = true;
-      setPeerStatus('connecting');
-      setStatusMessage(`Room ${code} created. Waiting for babe...`);
-
-      const hostPeerId = `booth-${code}-host`;
-      const peer = new Peer(hostPeerId, PEER_CONFIG);
-      peerRef.current = peer;
-
-      peer.on('open', (id) => {
-        console.log('[WebRTC] Host peer opened with ID:', id);
-        setStatusMessage(`Room ${code} active! Share code with babe.`);
-      });
-
-      peer.on('connection', (conn) => {
-        console.log('[WebRTC] Host received data connection from:', conn.peer);
-        setupDataConnection(conn);
-      });
-
-      peer.on('call', (call) => {
-        console.log('[WebRTC] Host received media call from:', call.peer);
-        handleIncomingCall(call);
-      });
-
-      peer.on('error', (err) => {
-        console.error('[WebRTC] Host Peer error:', err);
-        if (err.type === 'unavailable-id') {
-          setStatusMessage(`Room ${code} already exists. Try another.`);
-        } else {
-          setPeerStatus('error');
-          setStatusMessage(`Connection issue: ${err.type || 'Error'}`);
-        }
-      });
-
-      peer.on('disconnected', () => {
-        console.warn('[WebRTC] Host peer disconnected from signaling server');
-        if (peerRef.current && !peerRef.current.destroyed) {
-          peerRef.current.reconnect();
-        }
-      });
-    },
-    [disconnect, handleIncomingCall, setupDataConnection]
-  );
-
-  // Join a room as guest
-  const joinRoom = useCallback(
-    (code?: string | unknown) => {
-      disconnect();
-      const cleanCode = (typeof code === 'string' ? code : '').trim().toUpperCase();
-      if (!cleanCode) return;
-
-      setRoomCode(cleanCode);
-      setIsHost(false);
-      isHostRef.current = false;
-      setPeerStatus('connecting');
-      setStatusMessage(`Joining Room ${cleanCode}...`);
-
-      const guestPeerId = `booth-${cleanCode}-guest-${Math.random().toString(36).substring(2, 6)}`;
-      const peer = new Peer(guestPeerId, PEER_CONFIG);
-      peerRef.current = peer;
-
-      peer.on('open', (id) => {
-        console.log('[WebRTC] Guest peer opened with ID:', id);
-        const targetHostId = `booth-${cleanCode}-host`;
-        partnerPeerIdRef.current = targetHostId;
-
-        // Connect data channel first; media call will trigger automatically on conn.open
-        const conn = peer.connect(targetHostId, { reliable: true });
-        setupDataConnection(conn);
-      });
-
-      peer.on('call', (call) => {
-        console.log('[WebRTC] Guest received media call from:', call.peer);
-        handleIncomingCall(call);
-      });
-
-      peer.on('error', (err) => {
-        console.error('[WebRTC] Guest Peer error:', err);
-        if (err.type === 'peer-unavailable') {
-          setPeerStatus('error');
-          setStatusMessage(`Room ${cleanCode} not found. Check the code!`);
-        } else {
-          setPeerStatus('error');
-          setStatusMessage(`Cannot reach room ${cleanCode}. Check code!`);
-        }
-      });
-
-      peer.on('disconnected', () => {
-        console.warn('[WebRTC] Guest peer disconnected from signaling server');
-        if (peerRef.current && !peerRef.current.destroyed) {
-          peerRef.current.reconnect();
-        }
-      });
-    },
-    [disconnect, handleIncomingCall, setupDataConnection]
-  );
 
   // Capture still image from remote video feed or live frame
   const captureRemoteFrame = useCallback((): string | null => {
@@ -584,13 +392,6 @@ export function usePeerSession({
     }
   }, [remoteStream, bindStreamToVideo]);
 
-  // Clean up on unmount
-  useEffect(() => {
-    return () => {
-      disconnect();
-    };
-  }, [disconnect]);
-
   // Read URL query parameter "?room=" on initial mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -601,24 +402,26 @@ export function usePeerSession({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      disconnect();
+    };
+  }, [disconnect]);
+
   const shareUrl =
     typeof window !== 'undefined' && roomCode
       ? `${window.location.origin}${window.location.pathname}?room=${roomCode}`
       : '';
 
   const retryMediaConnection = useCallback(() => {
-    if (partnerPeerIdRef.current) {
-      console.log('[WebRTC] Manual retry requested for:', partnerPeerIdRef.current);
-      hasReceivedStreamRef.current = false;
-      if (!isHostRef.current) {
-        initiateMediaCall(partnerPeerIdRef.current);
-      } else if (dataConnRef.current && dataConnRef.current.open) {
-        dataConnRef.current.send({ type: 'request-call' });
-      }
-    } else {
-      console.warn('[WebRTC] No partner peer ID known for retry');
+    if (roomRef.current && localStreamRef.current) {
+      console.log('[Room] Re-sending local stream to room');
+      try {
+        roomRef.current.addStream(localStreamRef.current);
+      } catch {}
     }
-  }, [initiateMediaCall]);
+  }, []);
 
   return {
     roomCode,

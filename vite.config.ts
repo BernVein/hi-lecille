@@ -10,4 +10,10 @@ export default defineConfig({
     tailwindcss(),
     babel({ presets: [reactCompilerPreset()] }),
   ],
+  server: {
+    allowedHosts: [
+      "luminance-aspirin-utensil.ngrok-free.dev",
+      ".ngrok-free.dev",
+    ],
+  },
 });

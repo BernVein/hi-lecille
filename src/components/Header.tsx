@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Button, Spinner } from '@heroui/react';
-import { Heart, WifiOff, Copy, Check, Users } from 'lucide-react';
-import type { PeerStatus } from '../types/photobooth';
+import React, { useState } from "react";
+import { createPortal } from "react-dom";
+import { Button, Spinner } from "@heroui/react";
+import { Heart, WifiOff, Copy, Check, Users } from "lucide-react";
+import type { PeerStatus } from "../types/photobooth";
 
 interface HeaderProps {
   peerStatus: PeerStatus;
@@ -23,7 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [showConnectModal, setShowConnectModal] = useState(false);
-  const [joinCodeInput, setJoinCodeInput] = useState('');
+  const [joinCodeInput, setJoinCodeInput] = useState("");
 
   const handleCopyLink = async () => {
     if (!shareUrl) return;
@@ -38,21 +38,21 @@ export const Header: React.FC<HeaderProps> = ({
 
   const getStatusBadge = () => {
     switch (peerStatus) {
-      case 'connected':
+      case "connected":
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/30 animate-pulse">
             <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
             Connected 💕
           </span>
         );
-      case 'connecting':
+      case "connecting":
         return (
           <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30">
             <Spinner size="sm" color="warning" />
-            Connecting {roomCode ? `(${roomCode})` : ''}...
+            Connecting {roomCode ? `(${roomCode})` : ""}...
           </span>
         );
-      case 'error':
+      case "error":
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/15 text-red-300 border border-red-500/30">
             <WifiOff className="w-3.5 h-3.5" />
@@ -92,7 +92,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-2 shrink-0">
             <div className="hidden sm:block">{getStatusBadge()}</div>
 
-            {peerStatus === 'connected' ? (
+            {peerStatus === "connected" ? (
               <Button
                 size="sm"
                 variant="outline"
@@ -109,7 +109,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => setShowConnectModal(true)}
               >
                 <Users className="w-4 h-4 mr-1" />
-                {roomCode ? `Room: ${roomCode}` : 'Connect with Babe'}
+                {roomCode ? `Room: ${roomCode}` : "Connect"}
               </Button>
             )}
           </div>
@@ -134,7 +134,9 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
                 <div className="flex items-center gap-2">
                   <Heart className="w-5 h-5 text-rose-400 fill-rose-400/30" />
-                  <h3 className="font-semibold text-zinc-100 text-base">Connect Cameras</h3>
+                  <h3 className="font-semibold text-zinc-100 text-base">
+                    Connect Cameras
+                  </h3>
                 </div>
                 <button
                   type="button"
@@ -146,7 +148,8 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
 
               <p className="text-xs text-zinc-400 leading-relaxed">
-                Connect your camera with babe in real-time. Share your room code or copy the direct link.
+                Connect your camera with babe in real-time. Share your room code
+                or copy the direct link.
               </p>
 
               {/* Option 1: Create room */}
@@ -157,7 +160,9 @@ export const Header: React.FC<HeaderProps> = ({
                 {roomCode ? (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between bg-zinc-900 px-3 py-2 rounded-lg border border-zinc-700">
-                      <span className="text-xs text-zinc-400">Your Room Code:</span>
+                      <span className="text-xs text-zinc-400">
+                        Your Room Code:
+                      </span>
                       <span className="font-mono text-base font-bold text-rose-400 tracking-wider">
                         {roomCode}
                       </span>
@@ -204,7 +209,9 @@ export const Header: React.FC<HeaderProps> = ({
                     maxLength={6}
                     placeholder="Enter Code (e.g. 2FN2)"
                     value={joinCodeInput}
-                    onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
+                    onChange={(e) =>
+                      setJoinCodeInput(e.target.value.toUpperCase())
+                    }
                     className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 font-mono tracking-wider uppercase focus:outline-none focus:border-rose-500"
                   />
                   <Button
@@ -236,7 +243,7 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
     </>
   );

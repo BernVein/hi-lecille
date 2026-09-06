@@ -39,7 +39,12 @@ export const PhotostripPreview: React.FC<PhotostripPreviewProps> = ({
     PHOTOBOOTH_FILTERS.find((f) => f.id === filterId) || PHOTOBOOTH_FILTERS[0];
 
   // Determine number of required slots for the chosen layout
-  const slotCount = layout === "3-cut" ? 3 : layout === "2-cut" || layout === "split-duo" ? 2 : 4;
+  const slotCount =
+    layout === "3-cut"
+      ? 3
+      : layout === "2-cut" || layout === "split-duo"
+        ? 2
+        : 4;
   const filledPhotos = photos.slice(0, slotCount);
 
   // Export to Canvas
@@ -101,8 +106,8 @@ export const PhotostripPreview: React.FC<PhotostripPreviewProps> = ({
             navigator.canShare({ files: [file] })
           ) {
             await navigator.share({
-              title: "Memories with Babe 💕",
-              text: "Our photostrip memory with babe 🤍",
+              title: "Memories",
+              text: "History",
               files: [file],
             });
           } else {
@@ -137,7 +142,9 @@ export const PhotostripPreview: React.FC<PhotostripPreviewProps> = ({
       <div className="w-full flex justify-center py-2">
         <div
           className={`shadow-2xl rounded-sm transition-all duration-300 relative border overflow-hidden ${
-            isFilm ? "px-2 py-3 sm:px-2.5 sm:py-3.5 max-w-[290px] sm:max-w-[310px]" : "p-3.5 sm:p-4 max-w-[280px] sm:max-w-[300px]"
+            isFilm
+              ? "px-2 py-3 sm:px-2.5 sm:py-3.5 max-w-[290px] sm:max-w-[310px]"
+              : "p-3.5 sm:p-4 max-w-[280px] sm:max-w-[300px]"
           } w-full`}
           style={{
             backgroundColor: frameConfig.bgHex,
@@ -150,11 +157,20 @@ export const PhotostripPreview: React.FC<PhotostripPreviewProps> = ({
             {isFilm && (
               <div className="w-5 shrink-0 flex flex-col justify-around items-center py-1 select-none pointer-events-none pr-1">
                 {Array.from({ length: sprocketCount }).map((_, i) => (
-                  <div key={i} className="flex flex-col items-center gap-0.5 my-0.5">
+                  <div
+                    key={i}
+                    className="flex flex-col items-center gap-0.5 my-0.5"
+                  >
                     <div className="w-2.5 h-3 rounded-[2px] bg-zinc-100 shadow-[inset_0_1px_1px_rgba(0,0,0,0.8)] border border-zinc-400" />
                     {i % 3 === 0 && (
                       <span className="text-[6px] font-mono text-amber-400/90 font-bold leading-none scale-75 whitespace-nowrap">
-                        {i === 0 ? "▲ 12A" : i === 3 ? "35mm" : i === 6 ? "▶ 13" : "▲ 13A"}
+                        {i === 0
+                          ? "▲ 12A"
+                          : i === 3
+                            ? "35mm"
+                            : i === 6
+                              ? "▶ 13"
+                              : "▲ 13A"}
                       </span>
                     )}
                   </div>
@@ -191,7 +207,9 @@ export const PhotostripPreview: React.FC<PhotostripPreviewProps> = ({
                           {filterConfig.tintColor && (
                             <div
                               className="absolute inset-0 pointer-events-none mix-blend-color"
-                              style={{ backgroundColor: filterConfig.tintColor }}
+                              style={{
+                                backgroundColor: filterConfig.tintColor,
+                              }}
                             />
                           )}
                           {/* Vignette */}
@@ -231,10 +249,7 @@ export const PhotostripPreview: React.FC<PhotostripPreviewProps> = ({
                   </div>
                 )}
                 <div className="text-[8px] font-mono opacity-70 pt-0.5 tracking-widest uppercase">
-                  {isFilm ? "35mm FILM • " : ""}FOR BABE • {filterConfig.name}
-                </div>
-                <div className="text-[7px] font-mono opacity-40 tracking-wider">
-                  b & l • butuan
+                  {isFilm ? "35mm FILM • " : ""} • {filterConfig.name}
                 </div>
               </div>
             </div>
@@ -243,11 +258,20 @@ export const PhotostripPreview: React.FC<PhotostripPreviewProps> = ({
             {isFilm && (
               <div className="w-5 shrink-0 flex flex-col justify-around items-center py-1 select-none pointer-events-none pl-1">
                 {Array.from({ length: sprocketCount }).map((_, i) => (
-                  <div key={i} className="flex flex-col items-center gap-0.5 my-0.5">
+                  <div
+                    key={i}
+                    className="flex flex-col items-center gap-0.5 my-0.5"
+                  >
                     <div className="w-2.5 h-3 rounded-[2px] bg-zinc-100 shadow-[inset_0_1px_1px_rgba(0,0,0,0.8)] border border-zinc-400" />
                     {i % 3 === 0 && (
                       <span className="text-[6px] font-mono text-amber-400/90 font-bold leading-none scale-75 whitespace-nowrap">
-                        {i === 0 ? "KODAK" : i === 3 ? "400" : i === 6 ? "SAFETY" : "FILM"}
+                        {i === 0
+                          ? "KODAK"
+                          : i === 3
+                            ? "400"
+                            : i === 6
+                              ? "SAFETY"
+                              : "FILM"}
                       </span>
                     )}
                   </div>

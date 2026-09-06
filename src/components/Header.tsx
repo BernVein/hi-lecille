@@ -82,9 +82,6 @@ export const Header: React.FC<HeaderProps> = ({
               <h1 className="text-sm sm:text-base font-bold text-zinc-100 tracking-tight flex items-center gap-1.5">
                 PHOTOBOOTH
               </h1>
-              <p className="text-[10px] text-rose-300/80 font-medium tracking-wide">
-                for babe • butuan 🤍
-              </p>
             </div>
           </div>
 
@@ -181,7 +178,7 @@ export const Header: React.FC<HeaderProps> = ({
                       ) : (
                         <>
                           <Copy className="w-3.5 h-3.5 mr-1" />
-                          Copy Link for Babe
+                          Copy Link
                         </>
                       )}
                     </Button>

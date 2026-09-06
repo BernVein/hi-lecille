@@ -23,13 +23,13 @@ export const MemoryGallery: React.FC<MemoryGalleryProps> = ({
     <div className="w-full bg-zinc-950/90 border border-zinc-800 rounded-2xl p-4 shadow-xl space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
-          <span>History</span>
+          <span>Memories with Babe 💕</span>
           <span className="ml-1 text-[11px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold">
             {memories.length}
           </span>
         </div>
         <span className="text-[11px] text-zinc-500">
-          Saved locally on this device
+          Saved on this device
         </span>
       </div>
 
@@ -48,7 +48,7 @@ export const MemoryGallery: React.FC<MemoryGalleryProps> = ({
             <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 p-2">
               <a
                 href={mem.dataUrl}
-                download={`LDR-Memory-${mem.timestamp}.png`}
+                download={`babe-memory-${mem.timestamp}.png`}
                 className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white transition-colors"
                 title="Download"
               >

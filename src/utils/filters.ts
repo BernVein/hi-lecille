@@ -153,12 +153,12 @@ export const DEFAULT_COUPLE: {
   distanceKm?: number;
   loveNote: string;
 } = {
-  partner1: '',
-  partner2: '',
+  partner1: 'Bern',
+  partner2: 'Lecille Joy',
   location1: '',
-  location2: '',
+  location2: 'Butuan',
   distanceKm: 0,
-  loveNote: 'Together across any distance 💌',
+  loveNote: 'always and only for you, babe 🌻',
 };
 
 export const CUTE_STICKERS = [

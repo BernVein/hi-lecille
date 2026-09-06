@@ -126,7 +126,15 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
         {hasRemoteStream ? (
           <div className="relative aspect-[4/3] sm:aspect-[4/3] bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800/60 flex items-center justify-center">
             <video
-              ref={remoteVideoRef}
+              ref={(el) => {
+                if (el) {
+                  (remoteVideoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
+                  if (remoteStream && el.srcObject !== remoteStream) {
+                    el.srcObject = remoteStream;
+                    el.play().catch(() => {});
+                  }
+                }
+              }}
               playsInline
               autoPlay
               muted
@@ -150,10 +158,10 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
               <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_45%,rgba(0,0,0,0.35)_100%)]" />
             )}
 
-            {/* Simple Partner badge */}
+            {/* Simple Babe badge */}
             <div className="absolute bottom-2.5 left-2.5 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-950/80 backdrop-blur-md border border-rose-500/30 text-[11px] font-medium text-rose-200">
               <Heart className="w-3 h-3 text-rose-400 fill-rose-400" />
-              <span>Partner</span>
+              <span>Babe 💕</span>
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
             </div>
 
@@ -162,7 +170,7 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
               <button
                 type="button"
                 onClick={onRetryConnection}
-                title="Reconnect Partner Video"
+                title="Reconnect Babe's Video"
                 className="absolute top-2.5 right-2.5 z-10 p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-zinc-400 hover:text-white border border-white/10 transition-colors"
               >
                 <RefreshCw className="w-3 h-3" />
@@ -175,10 +183,10 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
               <Spinner size="lg" color="accent" />
             </div>
             <h4 className="text-sm font-semibold text-zinc-200 mb-1">
-              Partner Connected!
+              Babe Connected!
             </h4>
             <p className="text-xs text-zinc-400 max-w-xs mb-3">
-              Waiting for partner camera video...
+              Waiting for babe's camera video...
             </p>
             {onRetryConnection && (
               <button
@@ -198,7 +206,7 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
                 <Spinner size="lg" color="accent" />
               </div>
               <h4 className="text-sm font-semibold text-zinc-200 mb-1">
-                Connecting to partner...
+                Connecting to babe...
               </h4>
               <p className="text-xs text-zinc-500 max-w-xs">
                 Share your room code or invite link to connect cameras.
@@ -218,11 +226,11 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
           <span className="hidden sm:inline text-zinc-500">• {currentFilter.tagline}</span>
         </div>
 
-        {/* Solo fallback upload if partner isn't on call */}
+        {/* Solo fallback upload if babe isn't on call */}
         {!hasRemoteStream && onUploadPartnerPhoto && (
           <label className="cursor-pointer inline-flex items-center gap-1 text-[11px] text-zinc-400 hover:text-rose-300 transition-colors">
             <ImagePlus className="w-3.5 h-3.5 text-rose-400" />
-            <span>Upload Partner Photo</span>
+            <span>Upload Babe's Photo</span>
             <input
               type="file"
               accept="image/*"

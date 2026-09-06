@@ -133,7 +133,7 @@ export const StripCustomizer: React.FC<StripCustomizerProps> = ({
           type="text"
           value={couple.loveNote}
           onChange={(e) => onUpdateCoupleNote(e.target.value)}
-          placeholder="e.g. Our memories 💕"
+          placeholder="e.g. always and only for you, babe 🤍"
           className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-zinc-100 text-xs focus:outline-none focus:border-rose-500 transition-colors"
         />
       </div>

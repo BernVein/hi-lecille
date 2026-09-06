@@ -89,9 +89,25 @@ export function usePeerSession({
 
   // Attach stream to remote video element helper
   const attachRemoteStream = useCallback((stream: MediaStream) => {
+    console.log('Attaching remote stream:', stream.id, 'video tracks:', stream.getVideoTracks().length);
     setRemoteStream(stream);
     setPeerStatus('connected');
-    setStatusMessage('Connected with your partner 💕');
+    setStatusMessage('Connected with babe 💕');
+
+    stream.getVideoTracks().forEach((track) => {
+      track.enabled = true;
+      track.onunmute = () => {
+        console.log('Remote video track unmuted and active');
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.play().catch(() => {});
+        }
+      };
+    });
+
+    stream.onaddtrack = () => {
+      console.log('Track added to remote stream, total tracks:', stream.getTracks().length);
+      setRemoteStream(new MediaStream(stream.getTracks()));
+    };
 
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = stream;
@@ -236,7 +252,7 @@ export function usePeerSession({
 
       conn.on('close', () => {
         setPeerStatus('disconnected');
-        setStatusMessage('Partner disconnected');
+        setStatusMessage('Babe disconnected');
         dataConnRef.current = null;
         setRemoteStream(null);
       });
@@ -252,6 +268,7 @@ export function usePeerSession({
       onRemotePhotoReceived,
       onRemoteFilterChange,
       onRemoteLayoutChange,
+      remoteStream,
     ]
   );
 
@@ -293,14 +310,14 @@ export function usePeerSession({
       setRoomCode(code);
       setIsHost(true);
       setPeerStatus('connecting');
-      setStatusMessage(`Room ${code} created. Waiting for partner...`);
+      setStatusMessage(`Room ${code} created. Waiting for babe...`);
 
-      const hostPeerId = `ldr-booth-${code}-host`;
+      const hostPeerId = `booth-${code}-host`;
       const peer = new Peer(hostPeerId, PEER_CONFIG);
       peerRef.current = peer;
 
       peer.on('open', () => {
-        setStatusMessage(`Room ${code} active! Share code or link.`);
+        setStatusMessage(`Room ${code} active! Share code with babe.`);
       });
 
       // Guest connects data channel
@@ -334,12 +351,12 @@ export function usePeerSession({
       setPeerStatus('connecting');
       setStatusMessage(`Joining Room ${cleanCode}...`);
 
-      const guestPeerId = `ldr-booth-${cleanCode}-guest-${Math.random().toString(36).substring(2, 6)}`;
+      const guestPeerId = `booth-${cleanCode}-guest-${Math.random().toString(36).substring(2, 6)}`;
       const peer = new Peer(guestPeerId, PEER_CONFIG);
       peerRef.current = peer;
 
       peer.on('open', () => {
-        const targetHostId = `ldr-booth-${cleanCode}-host`;
+        const targetHostId = `booth-${cleanCode}-host`;
         partnerPeerIdRef.current = targetHostId;
 
         // Connect data

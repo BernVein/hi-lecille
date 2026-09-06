@@ -222,18 +222,21 @@ export async function generatePhotostripCanvas(options: RenderStripOptions): Pro
   }
 
   // Bottom timestamp & cute barcode
-  const dateStampY = height - 24;
+  const dateStampY = height - 28;
   ctx.font = '10px monospace';
-  ctx.globalAlpha = 0.6;
+  ctx.globalAlpha = 0.7;
   const dateStr = couple.dateText || new Date().toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
   });
-  ctx.fillText(`LDR PHOTOBOOTH • ${dateStr} • ${filterConfig.name.toUpperCase()}`, width / 2, dateStampY);
+  ctx.fillText(`FOR BABE • BUTUAN • ${dateStr} • ${filterConfig.name.toUpperCase()}`, width / 2, dateStampY);
 
-  // Decorative mini barcode
+  // Decorative mini barcode with subtle initials
   drawMiniBarcode(ctx, width / 2 - 40, dateStampY + 6, 80, 8, frameConfig.textHex);
+  ctx.font = '7px monospace';
+  ctx.globalAlpha = 0.45;
+  ctx.fillText('b & l • l.j.d. 🤍', width / 2, dateStampY + 20);
 
   ctx.globalAlpha = 1.0;
   return canvas;

@@ -61,7 +61,7 @@ export const PhotostripPreview: React.FC<PhotostripPreviewProps> = ({
 
       if (action === "download") {
         const a = document.createElement("a");
-        const filename = `photostrip-${Date.now()}.png`;
+        const filename = `babe-photostrip-${Date.now()}.png`;
         a.href = dataUrl;
         a.download = filename;
         document.body.appendChild(a);
@@ -92,7 +92,7 @@ export const PhotostripPreview: React.FC<PhotostripPreviewProps> = ({
       } else if (action === "share") {
         canvas.toBlob(async (blob) => {
           if (!blob) return;
-          const file = new File([blob], "photostrip.png", {
+          const file = new File([blob], "babe-photostrip.png", {
             type: "image/png",
           });
           if (
@@ -101,8 +101,8 @@ export const PhotostripPreview: React.FC<PhotostripPreviewProps> = ({
             navigator.canShare({ files: [file] })
           ) {
             await navigator.share({
-              title: "Couple Photostrip",
-              text: "Our Photobooth memory 💕",
+              title: "Memories with Babe 💕",
+              text: "Our photostrip memory with babe 🤍",
               files: [file],
             });
           } else {
@@ -230,8 +230,11 @@ export const PhotostripPreview: React.FC<PhotostripPreviewProps> = ({
                     {selectedStickers.join(" ")}
                   </div>
                 )}
-                <div className="text-[8px] font-mono opacity-60 pt-0.5 tracking-widest uppercase">
-                  {isFilm ? "35mm FILM • " : ""}PHOTOBOOTH • {filterConfig.name}
+                <div className="text-[8px] font-mono opacity-70 pt-0.5 tracking-widest uppercase">
+                  {isFilm ? "35mm FILM • " : ""}FOR BABE • {filterConfig.name}
+                </div>
+                <div className="text-[7px] font-mono opacity-40 tracking-wider">
+                  b & l • butuan
                 </div>
               </div>
             </div>

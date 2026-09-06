@@ -82,8 +82,8 @@ export const Header: React.FC<HeaderProps> = ({
               <h1 className="text-sm sm:text-base font-bold text-zinc-100 tracking-tight flex items-center gap-1.5">
                 PHOTOBOOTH
               </h1>
-              <p className="text-[10px] text-zinc-400 font-medium tracking-wide">
-                LDR Couple Film Studio
+              <p className="text-[10px] text-rose-300/80 font-medium tracking-wide">
+                for babe • butuan 🤍
               </p>
             </div>
           </div>
@@ -109,7 +109,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => setShowConnectModal(true)}
               >
                 <Users className="w-4 h-4 mr-1" />
-                {roomCode ? `Room: ${roomCode}` : 'Connect Partner'}
+                {roomCode ? `Room: ${roomCode}` : 'Connect with Babe'}
               </Button>
             )}
           </div>
@@ -146,7 +146,7 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
 
               <p className="text-xs text-zinc-400 leading-relaxed">
-                Connect your camera with your partner's phone or laptop in real-time. Share your room code or copy the direct link.
+                Connect your camera with babe in real-time. Share your room code or copy the direct link.
               </p>
 
               {/* Option 1: Create room */}
@@ -158,30 +158,35 @@ export const Header: React.FC<HeaderProps> = ({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between bg-zinc-900 px-3 py-2 rounded-lg border border-zinc-700">
                       <span className="text-xs text-zinc-400">Your Room Code:</span>
-                      <span className="text-base font-mono font-bold text-rose-400 tracking-wider">
+                      <span className="font-mono text-base font-bold text-rose-400 tracking-wider">
                         {roomCode}
                       </span>
                     </div>
-                    {shareUrl && (
-                      <Button
-                        fullWidth
-                        size="sm"
-                        variant="outline"
-                        onClick={handleCopyLink}
-                        className="text-xs border-rose-500/40 text-rose-300 hover:bg-rose-950/30"
-                      >
-                        {copied ? <Check className="w-3.5 h-3.5 mr-1" /> : <Copy className="w-3.5 h-3.5 mr-1" />}
-                        {copied ? 'Link Copied to Clipboard!' : 'Copy Invite Link'}
-                      </Button>
-                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full text-xs border-zinc-700 hover:bg-zinc-800 text-zinc-200"
+                      onClick={handleCopyLink}
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 mr-1 text-emerald-400" />
+                          Copied Link!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 mr-1" />
+                          Copy Link for Babe
+                        </>
+                      )}
+                    </Button>
                   </div>
                 ) : (
                   <Button
-                    fullWidth
                     size="sm"
                     variant="primary"
-                    className="bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold"
-                    onClick={() => onCreateRoom()}
+                    className="w-full text-xs bg-rose-500 hover:bg-rose-600 text-white font-medium"
+                    onClick={onCreateRoom}
                   >
                     Generate Room Code
                   </Button>
@@ -191,21 +196,22 @@ export const Header: React.FC<HeaderProps> = ({
               {/* Option 2: Join room */}
               <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800 space-y-2.5">
                 <span className="text-xs font-semibold text-zinc-300 block">
-                  2. Join Partner's Room
+                  2. Join Babe's Room
                 </span>
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="Enter 4-letter code"
+                    maxLength={6}
+                    placeholder="Enter Code (e.g. 2FN2)"
                     value={joinCodeInput}
                     onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
-                    maxLength={6}
-                    className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-100 flex-1 uppercase tracking-wider font-mono focus:outline-none focus:border-rose-500"
+                    className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 font-mono tracking-wider uppercase focus:outline-none focus:border-rose-500"
                   />
                   <Button
                     size="sm"
-                    variant="secondary"
-                    className="text-xs font-semibold"
+                    variant="outline"
+                    className="text-xs border-zinc-700 text-zinc-200 hover:bg-zinc-800"
+                    isDisabled={!joinCodeInput.trim()}
                     onClick={() => {
                       if (joinCodeInput.trim()) {
                         onJoinRoom(joinCodeInput.trim());

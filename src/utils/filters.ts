@@ -1,0 +1,152 @@
+import type { PhotoboothFilter, FrameColor } from '../types/photobooth';
+
+export const PHOTOBOOTH_FILTERS: PhotoboothFilter[] = [
+  {
+    id: 'haru-pastel',
+    name: 'Haru Pastel',
+    tagline: 'Korean Soft Lavender Glow',
+    badge: 'Signature Haru',
+    cssFilter: 'brightness(1.12) contrast(0.95) saturate(1.08) hue-rotate(-5deg)',
+    tintColor: 'rgba(230, 220, 255, 0.12)',
+    description: 'Soft pastel radiance with lifted shadows, dreamy skin glow, and airy highlights.',
+    vignette: false,
+    dateStamp: false,
+  },
+  {
+    id: 'life4cuts-noir',
+    name: 'Life4Cuts Noir',
+    tagline: 'High-Contrast Timeless B&W',
+    badge: 'Classic Strip',
+    cssFilter: 'grayscale(1) contrast(1.35) brightness(1.02)',
+    tintColor: 'rgba(0, 0, 0, 0.05)',
+    description: 'Punchy monochrome with deep rich blacks and luminous highlights.',
+    vignette: true,
+    dateStamp: false,
+  },
+  {
+    id: 'disposable-98',
+    name: "Disposable '98",
+    tagline: 'Warm Retro 90s Film Cam',
+    badge: 'Vintage Film',
+    cssFilter: 'sepia(0.28) contrast(1.18) brightness(1.05) saturate(1.15)',
+    tintColor: 'rgba(255, 210, 150, 0.15)',
+    description: 'Warm amber tones, faded blacks, soft grain, and iconic analog date stamp.',
+    vignette: true,
+    dateStamp: true,
+  },
+  {
+    id: 'golden-sunset',
+    name: 'Golden Hour',
+    tagline: 'Romantic Warm Sunlight Haze',
+    badge: 'Sun-Kissed',
+    cssFilter: 'brightness(1.08) contrast(1.08) saturate(1.3) sepia(0.18) hue-rotate(-8deg)',
+    tintColor: 'rgba(255, 175, 75, 0.18)',
+    description: 'Cozy golden sunlight, rosy cheeks, and warm nostalgic edges.',
+    vignette: true,
+    dateStamp: false,
+  },
+  {
+    id: 'indie-35mm',
+    name: '35mm Indie',
+    tagline: 'Cinematic Muted Teal & Grain',
+    badge: 'Cinematic',
+    cssFilter: 'contrast(1.22) saturate(0.88) brightness(0.98) hue-rotate(10deg)',
+    tintColor: 'rgba(70, 130, 160, 0.12)',
+    description: 'Moody film tones, desaturated foliage, warm skin tones, and rich depth.',
+    vignette: true,
+    dateStamp: false,
+  },
+  {
+    id: 'original',
+    name: 'Natural / Raw',
+    tagline: 'Original Camera Stream',
+    badge: 'Raw',
+    cssFilter: 'none',
+    tintColor: undefined,
+    description: 'Clean, unfiltered camera feed.',
+    vignette: false,
+    dateStamp: false,
+  },
+];
+
+export const FRAME_COLORS: FrameColor[] = [
+  {
+    id: 'midnight-black',
+    name: 'Life4Cuts Black',
+    bgHex: '#18181b',
+    textHex: '#fafafa',
+    borderHex: '#27272a',
+    accentHex: '#f43f5e',
+  },
+  {
+    id: 'cream-linen',
+    name: 'Warm Cream Linen',
+    bgHex: '#fbf8f2',
+    textHex: '#292524',
+    borderHex: '#e7e5e4',
+    accentHex: '#d97706',
+  },
+  {
+    id: 'haru-blue',
+    name: 'Haru Sky Blue',
+    bgHex: '#e0f2fe',
+    textHex: '#0369a1',
+    borderHex: '#bae6fd',
+    accentHex: '#0284c7',
+  },
+  {
+    id: 'sakura-pink',
+    name: 'Sakura Petal Pink',
+    bgHex: '#ffe4e6',
+    textHex: '#9f1239',
+    borderHex: '#fecdd3',
+    accentHex: '#e11d48',
+  },
+  {
+    id: 'sage-matcha',
+    name: 'Matcha Sage',
+    bgHex: '#ecfdf5',
+    textHex: '#065f46',
+    borderHex: '#a7f3d0',
+    accentHex: '#059669',
+  },
+  {
+    id: 'deep-wine',
+    name: 'Vintage Wine Red',
+    bgHex: '#4c0519',
+    textHex: '#ffe4e6',
+    borderHex: '#881337',
+    accentHex: '#fb7185',
+  },
+];
+
+export const DEFAULT_COUPLE: {
+  partner1: string;
+  partner2: string;
+  location1: string;
+  location2: string;
+  distanceKm?: number;
+  loveNote: string;
+} = {
+  partner1: '',
+  partner2: '',
+  location1: '',
+  location2: '',
+  distanceKm: 0,
+  loveNote: 'Together across any distance 💌',
+};
+
+export const CUTE_STICKERS = [
+  '💕',
+  '✨',
+  '📸',
+  '💌',
+  '✈️',
+  '🌸',
+  '🤍',
+  '🧸',
+  '🎞️',
+  '☕',
+  '🌙',
+  '🔒',
+];

@@ -238,13 +238,14 @@ export function App() {
     runCountdownSequence(timerSec, true);
   };
 
-  // Start automated 4-shot photobooth session
-  const handleStartMultiShotSession = async (shotsCount = 4) => {
+  // Start automated photobooth session matching current layout
+  const handleStartMultiShotSession = async (shotsCount?: number) => {
+    const actualShots = shotsCount ?? targetPhotoCount;
     if (isCapturing) return;
     isMultiShotActiveRef.current = true;
     setPhotos([]);
 
-    for (let i = 0; i < shotsCount; i++) {
+    for (let i = 0; i < actualShots; i++) {
       if (!isMultiShotActiveRef.current) break;
 
       // Run 3-second countdown before each pose
@@ -269,7 +270,7 @@ export function App() {
       });
 
       // Pause between shots if more remain
-      if (i < shotsCount - 1) {
+      if (i < actualShots - 1) {
         await new Promise((r) => setTimeout(r, 1200));
       }
     }
@@ -338,7 +339,7 @@ export function App() {
   };
 
   // Determine target photos needed for current layout
-  const targetPhotoCount = layout === '2-cut' || layout === 'split-duo' ? 2 : 4;
+  const targetPhotoCount = layout === '3-cut' ? 3 : layout === '2-cut' || layout === 'split-duo' ? 2 : 4;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col antialiased">
@@ -361,6 +362,7 @@ export function App() {
             <LiveCameraView
               localVideoRef={localVideoRef}
               remoteVideoRef={remoteVideoRef}
+              remoteStream={remoteStream}
               hasRemoteStream={!!remoteStream}
               peerStatus={peerStatus}
               activeFilter={activeFilter}

@@ -71,6 +71,31 @@ export const PHOTOBOOTH_FILTERS: PhotoboothFilter[] = [
 
 export const FRAME_COLORS: FrameColor[] = [
   {
+    id: 'film-35mm',
+    name: '35mm Film Roll',
+    bgHex: '#09090b',
+    textHex: '#fbbf24',
+    borderHex: '#18181b',
+    accentHex: '#f59e0b',
+    isFilmStrip: true,
+  },
+  {
+    id: 'sunflower-amber',
+    name: 'Sunflower Amber',
+    bgHex: '#f59e0b',
+    textHex: '#ffffff',
+    borderHex: '#d97706',
+    accentHex: '#fef08a',
+  },
+  {
+    id: 'studio-white',
+    name: 'Studio Pure White',
+    bgHex: '#ffffff',
+    textHex: '#18181b',
+    borderHex: '#e4e4e7',
+    accentHex: '#f43f5e',
+  },
+  {
     id: 'midnight-black',
     name: 'Life4Cuts Black',
     bgHex: '#18181b',
@@ -137,9 +162,12 @@ export const DEFAULT_COUPLE: {
 };
 
 export const CUTE_STICKERS = [
+  '🌻',
   '💕',
   '✨',
   '📸',
+  '🌼',
+  '🌷',
   '💌',
   '✈️',
   '🌸',

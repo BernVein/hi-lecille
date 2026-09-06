@@ -27,6 +27,20 @@ interface UsePeerSessionReturn {
   captureRemoteFrame: () => string | null;
 }
 
+const PEER_CONFIG = {
+  debug: 1,
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+    ],
+  },
+};
+
 function generateRandomCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let result = '';
@@ -54,15 +68,121 @@ export function usePeerSession({
   const dataConnRef = useRef<DataConnection | null>(null);
   const mediaConnRef = useRef<MediaConnection | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(localStream);
+  const partnerPeerIdRef = useRef<string | null>(null);
+
+  // Keep localStreamRef in sync with localStream prop
+  useEffect(() => {
+    localStreamRef.current = localStream;
+
+    // If localStream just arrived and we already have an active media call, update tracks!
+    if (localStream && mediaConnRef.current && mediaConnRef.current.peerConnection) {
+      try {
+        const pc = mediaConnRef.current.peerConnection;
+        const senders = pc.getSenders();
+        const videoTrack = localStream.getVideoTracks()[0];
+        if (videoTrack) {
+          const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
+          if (videoSender) {
+            videoSender.replaceTrack(videoTrack).catch((err) => {
+              console.warn('Failed to replace video track:', err);
+            });
+          } else {
+            // Track wasn't added yet, add it
+            pc.addTrack(videoTrack, localStream);
+          }
+        }
+      } catch (err) {
+        console.warn('Error upgrading active media connection with new local stream:', err);
+      }
+    }
+
+    // If data connection is open and we have partnerPeerId but no remote stream yet, try calling
+    if (localStream && dataConnRef.current && dataConnRef.current.open && partnerPeerIdRef.current) {
+      broadcastMessage({ type: 'ping' });
+    }
+  }, [localStream]);
+
+  // Handle incoming media call
+  const handleIncomingCall = useCallback((call: MediaConnection) => {
+    mediaConnRef.current = call;
+    partnerPeerIdRef.current = call.peer;
+
+    const streamToSend = localStreamRef.current;
+    if (streamToSend) {
+      call.answer(streamToSend);
+    } else {
+      call.answer();
+    }
+
+    call.on('stream', (stream) => {
+      setRemoteStream(stream);
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = stream;
+        remoteVideoRef.current.play().catch(() => {});
+      }
+    });
+
+    call.on('close', () => {
+      setRemoteStream(null);
+    });
+
+    call.on('error', (err) => {
+      console.warn('Media call error:', err);
+    });
+  }, []);
+
+  // Call partner peer with media stream
+  const callPartner = useCallback((targetPeerId: string) => {
+    if (!peerRef.current || peerRef.current.destroyed) return;
+    const streamToSend = localStreamRef.current;
+
+    try {
+      let call: MediaConnection;
+      if (streamToSend) {
+        call = peerRef.current.call(targetPeerId, streamToSend);
+      } else {
+        // Call even if no local video yet so connection can establish
+        call = peerRef.current.call(targetPeerId, new MediaStream());
+      }
+
+      mediaConnRef.current = call;
+      partnerPeerIdRef.current = targetPeerId;
+
+      call.on('stream', (stream) => {
+        setRemoteStream(stream);
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = stream;
+          remoteVideoRef.current.play().catch(() => {});
+        }
+      });
+
+      call.on('close', () => {
+        setRemoteStream(null);
+      });
+
+      call.on('error', (err) => {
+        console.warn('Outgoing call error:', err);
+      });
+    } catch (err) {
+      console.error('Call partner failed:', err);
+    }
+  }, []);
 
   // Setup data connection listeners
   const setupDataConnection = useCallback(
     (conn: DataConnection) => {
       dataConnRef.current = conn;
+      partnerPeerIdRef.current = conn.peer;
 
       conn.on('open', () => {
         setPeerStatus('connected');
-        setStatusMessage('Connected with your love 💕');
+        setStatusMessage('Connected with your partner 💕');
+
+        // Once data connection opens, initiate media call if not already active
+        if (!mediaConnRef.current && partnerPeerIdRef.current) {
+          callPartner(partnerPeerIdRef.current);
+        }
       });
 
       conn.on('data', (data: unknown) => {
@@ -91,6 +211,12 @@ export function usePeerSession({
               onRemoteLayoutChange?.(msg.layoutId);
             }
             break;
+          case 'ping':
+            // If partner sent ping and we don't have active call, call them back with our stream
+            if (!mediaConnRef.current && partnerPeerIdRef.current) {
+              callPartner(partnerPeerIdRef.current);
+            }
+            break;
         }
       });
 
@@ -98,6 +224,7 @@ export function usePeerSession({
         setPeerStatus('disconnected');
         setStatusMessage('Partner disconnected');
         dataConnRef.current = null;
+        setRemoteStream(null);
       });
 
       conn.on('error', (err) => {
@@ -105,6 +232,7 @@ export function usePeerSession({
       });
     },
     [
+      callPartner,
       onRemoteCountdownStart,
       onRemoteSnapTrigger,
       onRemotePhotoReceived,
@@ -134,6 +262,7 @@ export function usePeerSession({
       peerRef.current.destroy();
       peerRef.current = null;
     }
+    partnerPeerIdRef.current = null;
     setRemoteStream(null);
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = null;
@@ -153,9 +282,7 @@ export function usePeerSession({
       setStatusMessage(`Room ${code} created. Waiting for partner...`);
 
       const hostPeerId = `ldr-booth-${code}-host`;
-      const peer = new Peer(hostPeerId, {
-        debug: 1,
-      });
+      const peer = new Peer(hostPeerId, PEER_CONFIG);
       peerRef.current = peer;
 
       peer.on('open', () => {
@@ -169,29 +296,16 @@ export function usePeerSession({
 
       // Guest calls with media stream
       peer.on('call', (call) => {
-        mediaConnRef.current = call;
-        if (localStream) {
-          call.answer(localStream);
-        } else {
-          call.answer();
-        }
-
-        call.on('stream', (stream) => {
-          setRemoteStream(stream);
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = stream;
-            remoteVideoRef.current.play().catch(() => {});
-          }
-        });
+        handleIncomingCall(call);
       });
 
       peer.on('error', (err) => {
-        console.error('Peer error:', err);
+        console.error('Host Peer error:', err);
         setPeerStatus('error');
         setStatusMessage(`Connection issue: ${err.type || 'Error'}`);
       });
     },
-    [disconnect, localStream, setupDataConnection]
+    [disconnect, handleIncomingCall, setupDataConnection]
   );
 
   // Join a room as guest
@@ -207,29 +321,24 @@ export function usePeerSession({
       setStatusMessage(`Joining Room ${cleanCode}...`);
 
       const guestPeerId = `ldr-booth-${cleanCode}-guest-${Math.random().toString(36).substring(2, 6)}`;
-      const peer = new Peer(guestPeerId, {
-        debug: 1,
-      });
+      const peer = new Peer(guestPeerId, PEER_CONFIG);
       peerRef.current = peer;
 
       peer.on('open', () => {
         const targetHostId = `ldr-booth-${cleanCode}-host`;
+        partnerPeerIdRef.current = targetHostId;
+
         // Connect data
         const conn = peer.connect(targetHostId, { reliable: true });
         setupDataConnection(conn);
 
-        // Call host with video stream
-        if (localStream) {
-          const call = peer.call(targetHostId, localStream);
-          mediaConnRef.current = call;
-          call.on('stream', (stream) => {
-            setRemoteStream(stream);
-            if (remoteVideoRef.current) {
-              remoteVideoRef.current.srcObject = stream;
-              remoteVideoRef.current.play().catch(() => {});
-            }
-          });
-        }
+        // Also call host immediately
+        callPartner(targetHostId);
+      });
+
+      // Listen for incoming call from host as well (bi-directional support)
+      peer.on('call', (call) => {
+        handleIncomingCall(call);
       });
 
       peer.on('error', (err) => {
@@ -238,7 +347,7 @@ export function usePeerSession({
         setStatusMessage(`Cannot reach room ${cleanCode}. Check code!`);
       });
     },
-    [disconnect, localStream, setupDataConnection]
+    [callPartner, disconnect, handleIncomingCall, setupDataConnection]
   );
 
   // Capture still image from remote video feed
@@ -261,7 +370,12 @@ export function usePeerSession({
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
-      remoteVideoRef.current.play().catch(() => {});
+      const playPromise = remoteVideoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn('Remote video play prevented:', err);
+        });
+      }
     }
   }, [remoteStream]);
 

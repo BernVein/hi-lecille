@@ -7,6 +7,7 @@ import { PHOTOBOOTH_FILTERS } from '../utils/filters';
 interface LiveCameraViewProps {
   localVideoRef: React.RefObject<HTMLVideoElement | null>;
   remoteVideoRef: React.RefObject<HTMLVideoElement | null>;
+  remoteStream?: MediaStream | null;
   hasRemoteStream: boolean;
   peerStatus: PeerStatus;
   activeFilter: FilterId;
@@ -22,6 +23,7 @@ interface LiveCameraViewProps {
 export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
   localVideoRef,
   remoteVideoRef,
+  remoteStream,
   hasRemoteStream,
   peerStatus,
   activeFilter,
@@ -34,6 +36,16 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
   onUploadPartnerPhoto,
 }) => {
   const currentFilter = PHOTOBOOTH_FILTERS.find((f) => f.id === activeFilter) || PHOTOBOOTH_FILTERS[0];
+
+  // Direct sync of remoteStream to remoteVideo element
+  React.useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.srcObject = remoteStream;
+      remoteVideoRef.current.play().catch(() => {});
+    }
+  }, [remoteStream, remoteVideoRef]);
+
+  const showPartnerSlot = hasRemoteStream || peerStatus === 'connected' || peerStatus === 'connecting';
 
   return (
     <div className="relative w-full rounded-2xl overflow-hidden bg-zinc-950 border border-zinc-800/80 shadow-2xl">
@@ -52,7 +64,7 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
       )}
 
       {/* Camera Feeds Container: Responsive Split Screen */}
-      <div className={`w-full grid gap-1 p-1 sm:p-2 ${hasRemoteStream ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+      <div className={`w-full grid gap-1 p-1 sm:p-2 ${showPartnerSlot ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
         {/* Local Stream (You) */}
         <div className="relative aspect-[4/3] sm:aspect-[4/3] bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800/60 flex items-center justify-center">
           <video
@@ -108,15 +120,19 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
           </div>
         </div>
 
-        {/* Remote Stream (Partner) or Solo Waiting Placeholder */}
+        {/* Remote Stream (Partner) or Connecting Placeholders */}
         {hasRemoteStream ? (
           <div className="relative aspect-[4/3] sm:aspect-[4/3] bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800/60 flex items-center justify-center">
             <video
               ref={remoteVideoRef}
               playsInline
               autoPlay
+              muted
               style={{ filter: currentFilter.cssFilter }}
               className="w-full h-full object-cover transition-all duration-300"
+              onLoadedMetadata={(e) => {
+                (e.target as HTMLVideoElement).play().catch(() => {});
+              }}
             />
 
             {/* Tint overlay */}
@@ -139,8 +155,20 @@ export const LiveCameraView: React.FC<LiveCameraViewProps> = ({
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
             </div>
           </div>
+        ) : peerStatus === 'connected' ? (
+          <div className="relative aspect-[4/3] bg-zinc-900/60 rounded-xl border border-dashed border-rose-500/30 flex flex-col items-center justify-center p-6 text-center">
+            <div className="mb-3">
+              <Spinner size="lg" color="accent" />
+            </div>
+            <h4 className="text-sm font-semibold text-zinc-200 mb-1">
+              Partner Connected!
+            </h4>
+            <p className="text-xs text-zinc-400 max-w-xs">
+              Initializing partner camera feed...
+            </p>
+          </div>
         ) : (
-          !hasRemoteStream && peerStatus === 'connecting' && (
+          peerStatus === 'connecting' && (
             <div className="relative aspect-[4/3] bg-zinc-900/50 rounded-xl border border-dashed border-zinc-800 flex flex-col items-center justify-center p-6 text-center">
               <div className="mb-3">
                 <Spinner size="lg" color="accent" />

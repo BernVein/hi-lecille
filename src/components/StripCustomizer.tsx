@@ -25,6 +25,7 @@ export const StripCustomizer: React.FC<StripCustomizerProps> = ({
   onUpdateCoupleNote,
 }) => {
   const layouts: { id: StripLayout; name: string; desc: string; icon: string }[] = [
+    { id: '3-cut', name: '3-Cut Strip', desc: '1x3 Film Booth (Classic)', icon: '❚❚❚' },
     { id: '4-cut', name: '4-Cut Strip', desc: '1x4 Tall Korean Classic', icon: '❚❚❚❚' },
     { id: '2-cut', name: '2-Cut Duo', desc: 'Top & Bottom 2-Photo', icon: '❚❚' },
     { id: 'grid-4', name: '2x2 Photocard', desc: 'Square 4-Photo Card', icon: '⊞' },
@@ -39,7 +40,7 @@ export const StripCustomizer: React.FC<StripCustomizerProps> = ({
           <Layout className="w-3.5 h-3.5 text-rose-400" />
           <span>Strip Format</span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
           {layouts.map((l) => (
             <button
               key={l.id}

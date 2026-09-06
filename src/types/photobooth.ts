@@ -19,7 +19,7 @@ export interface PhotoboothFilter {
   dateStamp?: boolean;
 }
 
-export type StripLayout = '2-cut' | '4-cut' | 'grid-4' | 'split-duo';
+export type StripLayout = '2-cut' | '3-cut' | '4-cut' | 'grid-4' | 'split-duo';
 
 export interface FrameColor {
   id: string;
@@ -28,6 +28,7 @@ export interface FrameColor {
   textHex: string;
   borderHex: string;
   accentHex: string;
+  isFilmStrip?: boolean;
 }
 
 export interface CoupleProfile {

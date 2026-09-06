@@ -40,7 +40,13 @@ export async function generatePhotostripCanvas(options: RenderStripOptions): Pro
   let cols = 1;
   let rows = 4;
 
-  if (layout === '2-cut') {
+  if (layout === '3-cut') {
+    width = 600;
+    height = 1560;
+    photoSlots = 3;
+    cols = 1;
+    rows = 3;
+  } else if (layout === '2-cut') {
     width = 640;
     height = 1400;
     photoSlots = 2;
@@ -77,15 +83,21 @@ export async function generatePhotostripCanvas(options: RenderStripOptions): Pro
   ctx.fillStyle = frameConfig.bgHex;
   ctx.fillRect(0, 0, width, height);
 
-  // Subtle paper grain / border
-  ctx.strokeStyle = frameConfig.borderHex;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(1, 1, width - 2, height - 2);
+  // Draw 35mm Film Sprockets if film aesthetic is chosen
+  const isFilm = Boolean(frameConfig.isFilmStrip);
+  if (isFilm) {
+    drawFilmSprocketTracks(ctx, width, height);
+  } else {
+    // Subtle paper border
+    ctx.strokeStyle = frameConfig.borderHex;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(1, 1, width - 2, height - 2);
+  }
 
   // Header / Padding
   const topPadding = layout === 'grid-4' || layout === 'split-duo' ? 44 : 40;
   const bottomFooterHeight = layout === 'split-duo' ? 100 : 160;
-  const sideMargin = layout === 'grid-4' ? 36 : 32;
+  const sideMargin = isFilm ? 64 : (layout === 'grid-4' ? 36 : 32);
   const gap = layout === 'grid-4' ? 24 : 20;
 
   const contentWidth = width - sideMargin * 2;
@@ -248,4 +260,55 @@ function drawMiniBarcode(
     }
     curX += w;
   });
+}
+
+function drawFilmSprocketTracks(ctx: CanvasRenderingContext2D, width: number, height: number) {
+  const sprocketW = 20;
+  const sprocketH = 26;
+  const trackLeftX = 14;
+  const trackRightX = width - 14 - sprocketW;
+  const totalSprockets = Math.floor((height - 40) / 44);
+  const stepY = (height - 40) / totalSprockets;
+
+  for (let i = 0; i < totalSprockets; i++) {
+    const y = 20 + i * stepY + (stepY - sprocketH) / 2;
+
+    // Left sprocket hole
+    ctx.fillStyle = '#f4f4f5';
+    ctx.beginPath();
+    ctx.roundRect(trackLeftX, y, sprocketW, sprocketH, 4);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Right sprocket hole
+    ctx.beginPath();
+    ctx.roundRect(trackRightX, y, sprocketW, sprocketH, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    // Film markings text alongside sprockets
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = 'center';
+
+    if (i % 3 === 0) {
+      const markIdx = Math.floor(i / 3);
+      const textL = markIdx === 0 ? '▲ 12A' : markIdx === 1 ? '35mm' : markIdx === 2 ? '▶ 13' : '▲ 13A';
+      const textR = markIdx === 0 ? 'KODAK' : markIdx === 1 ? '400' : markIdx === 2 ? 'SAFETY' : 'FILM';
+
+      ctx.save();
+      ctx.translate(trackLeftX + sprocketW + 14, y + sprocketH / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText(textL, 0, 0);
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(trackRightX - 14, y + sprocketH / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText(textR, 0, 0);
+      ctx.restore();
+    }
+  }
 }
